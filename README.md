@@ -111,19 +111,56 @@ Adding a third backend means implementing `TranslationProvider` in
 
 ## Installing
 
-### From a VSIX
+The extension is not on the VS Code Marketplace, so it installs from the
+[GitHub Releases](https://github.com/hiepbk/pdf-translate-vscode/releases) of
+this repository. One command, and the same command later updates it.
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/hiepbk/pdf-translate-vscode/main/install.ps1 | iex
+```
+
+**Linux, macOS, and SSH / WSL / container hosts**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hiepbk/pdf-translate-vscode/main/install.sh | sh
+```
+
+Then reload VS Code (`Ctrl+Shift+P` → *Developer: Reload Window*).
+
+### Why one command per machine
+
+Settings Sync cannot restore this extension. It stores a list of **Marketplace
+extension IDs** and re-downloads them from the Marketplace; an extension that
+never came from there has no ID to download, so it is recorded in the sync
+payload and then quietly skipped on the new machine. Running the install script
+is what takes its place.
+
+Remote windows need it for a second reason: VS Code never syncs extensions to or
+from a remote window, so every SSH host, WSL distro and container needs its own
+install regardless of where the extension came from.
+
+### Cutting a release
+
+Pushing a tag is all it takes. GitHub Actions runs the lint and the tests,
+builds the VSIX and attaches it to a new Release, so releasing needs nothing
+installed locally.
+
+```sh
+# 1. bump "version" in package.json, then
+git commit -am "Release 0.2.0"
+git tag v0.2.0          # the tag must match package.json, or the build fails
+git push && git push --tags
+```
+
+### Building by hand
 
 ```sh
 npm install
 npm run package          # produces pdf-translate-<version>.vsix
 code --install-extension pdf-translate-<version>.vsix
 ```
-
-A sideloaded VSIX does **not** travel with Settings Sync — Settings Sync stores
-a list of Marketplace extension IDs and re-downloads them, so an extension that
-never came from the Marketplace cannot be restored on another machine. Install
-the VSIX on each machine, or publish it to the Marketplace under your own
-publisher ID.
 
 ### Remote windows (SSH, WSL, containers)
 
@@ -136,7 +173,7 @@ falls back to running locally for local files.
 Two consequences when you work over SSH, WSL or in a container:
 
 - The extension has to be installed **in that remote host**, not only locally.
-  VS Code shows it under *Local — Installed* with an "Install in SSH: …" button.
+  Run `install.sh` there, from VS Code's integrated terminal.
 - The translation request is made from the remote host, so that host needs
   outbound HTTPS access.
 - If you use the DeepL backend, secret storage belongs to the extension host, so

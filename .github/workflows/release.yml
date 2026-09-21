@@ -1,0 +1,76 @@
+# Builds the VSIX and publishes it as a GitHub Release.
+#
+# The extension is not on the VS Code Marketplace, so a Release is how it gets
+# from here onto a machine: install.ps1 and install.sh both fetch the newest
+# release asset. Building here rather than locally means a release never depends
+# on what happens to be installed on the machine doing the tagging.
+#
+# To cut a release:
+#   1. bump "version" in package.json and commit
+#   2. git tag v<that same version> && git push --tags
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # A broken build must not reach a release, since the install scripts
+      # always take the newest one.
+      - run: npm run lint
+      - run: npm run compile
+      - run: npm run test:unit
+
+      # A tag that disagrees with package.json produces an extension whose
+      # reported version is not the one anybody downloaded.
+      - name: Check the tag matches package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$manifest" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${manifest}." >&2
+            echo "Bump the version in package.json, commit, then retag." >&2
+            exit 1
+          fi
+          echo "version=${manifest}" >> "$GITHUB_OUTPUT"
+        id: version
+
+      - name: Package the extension
+        run: npx vsce package --out "pdf-translate-${{ steps.version.outputs.version }}.vsix"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.vsix'
+          generate_release_notes: true
+          body: |
+            Install or update on any machine:
+
+            **Windows (PowerShell)**
+            ```powershell
+            irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+            ```
+
+            **Linux / macOS / SSH hosts**
+            ```sh
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+            ```
+
+            Both always fetch the newest release, so the same command installs
+            and updates. Reload VS Code afterwards.
