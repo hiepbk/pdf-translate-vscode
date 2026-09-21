@@ -1,0 +1,9 @@
+# A shell script with CRLF line endings fails on Linux with a "bad interpreter"
+# error that names the right file and explains nothing. install.sh is fetched
+# straight from this repository and piped into sh, so its endings must not
+# depend on the autocrlf setting of whichever machine committed it.
+*.sh text eol=lf
+
+# Same reasoning: these are read by tools, not by Windows editors.
+*.yml text eol=lf
+*.yaml text eol=lf
