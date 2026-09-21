@@ -15,7 +15,13 @@ $Repo = 'hiepbk/pdf-translate-vscode'
 function Find-CodeCommand {
     # `code` is on PATH for most installs, but the User-scope installer does not
     # always add it, so the default location is worth checking before giving up.
-    $onPath = Get-Command code -CommandType Application -ErrorAction SilentlyContinue
+    #
+    # Select-Object -First 1 is load-bearing: VS Code ships both `code.cmd` and
+    # the extensionless `code` shell script in the same directory, so
+    # Get-Command returns two matches and `.Source` on that is an array. Calling
+    # it would splice both paths into one command name.
+    $onPath = Get-Command code -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
     if ($onPath) { return $onPath.Source }
 
     $candidates = @(
