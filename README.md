@@ -91,10 +91,23 @@ never came from the Marketplace cannot be restored on another machine. Install
 the VSIX on each machine, or publish it to the Marketplace under your own
 publisher ID.
 
-Remote windows are a separate question. This extension declares
-`"extensionKind": ["ui"]`, so it runs on the local machine even when the window
-is attached to SSH, WSL or a container, and a local install covers those
-windows.
+### Remote windows (SSH, WSL, containers)
+
+The extension declares `"extensionKind": ["workspace", "ui"]`. Upstream declares
+only `"ui"`, but a UI extension runs on the local machine and cannot read files
+in a remote workspace, which is exactly what a custom editor for `*.pdf` has to
+do. Preferring `workspace` means the extension runs wherever the PDF is, and
+falls back to running locally for local files.
+
+Two consequences when you work over SSH, WSL or in a container:
+
+- The extension has to be installed **in that remote host**, not only locally.
+  VS Code shows it under *Local — Installed* with an "Install in SSH: …" button.
+- Secret storage belongs to the extension host, so the DeepL key is set **once
+  per host**. Run **PDF Translate: Set DeepL API Key** again in the remote
+  window the first time you translate there.
+- The DeepL request is made from the remote host, so that host needs outbound
+  HTTPS access.
 
 ### Development
 

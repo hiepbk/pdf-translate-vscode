@@ -29,3 +29,11 @@ the default path.
 
 For the history of the upstream viewer this fork is based on, see
 [CHANGELOG.upstream.md](CHANGELOG.upstream.md).
+
+### Deviation from upstream worth knowing about
+
+Upstream declares `"extensionKind": ["ui"]`. A UI extension runs on the local
+machine and cannot read files in a remote workspace, which is precisely what a
+custom editor for `*.pdf` must do, so this fork declares
+`["workspace", "ui"]` instead. See the README for what that means when working
+over SSH, WSL or in a container.
