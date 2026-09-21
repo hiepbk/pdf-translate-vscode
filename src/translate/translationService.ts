@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { cleanPdfText } from './cleanText';
 import { DeepLProvider } from './deeplProvider';
 import { GoogleTranslateProvider } from './googleProvider';
+import { AUTO_DETECT } from './languages';
 import {
   MissingApiKeyError,
   TranslationError,
@@ -20,7 +21,15 @@ export interface TranslationOutcome {
   translated: string;
   providerLabel: string;
   detectedSourceLanguage?: string;
+  /** The languages actually used, which may be overrides rather than settings. */
+  sourceLanguage: string;
   targetLanguage: string;
+}
+
+/** Languages chosen for one translation, overriding the configured defaults. */
+export interface LanguageOverrides {
+  sourceLanguage?: string;
+  targetLanguage?: string;
 }
 
 /**
@@ -38,7 +47,17 @@ export class TranslationService {
 
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
-  public async translate(rawSelection: string): Promise<TranslationOutcome> {
+  /**
+   * `overrides` carries the languages chosen in the popup's pickers. They are
+   * deliberately not written to settings first: switching the target language
+   * to check a phrase should not silently change the default for every future
+   * translation, so the popup asks for the change it wants and persists it only
+   * when the user's choice is meant to stick.
+   */
+  public async translate(
+    rawSelection: string,
+    overrides: LanguageOverrides = {}
+  ): Promise<TranslationOutcome> {
     const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
 
     const cleaned = cleanPdfText(rawSelection, {
@@ -52,9 +71,20 @@ export class TranslationService {
       );
     }
 
-    const targetLanguage = config.get<string>('targetLanguage', 'vi').trim();
-    const sourceLanguage = config.get<string>('sourceLanguage', 'auto').trim();
+    const targetLanguage = (
+      overrides.targetLanguage || config.get<string>('targetLanguage', 'vi')
+    ).trim();
+    const sourceLanguage = (
+      overrides.sourceLanguage ||
+      config.get<string>('sourceLanguage', AUTO_DETECT)
+    ).trim();
     const timeoutMs = config.get<number>('timeout', 15000);
+
+    if (targetLanguage === AUTO_DETECT) {
+      throw new TranslationError(
+        'Auto-detect is only meaningful for the source language; choose a target language to translate into.'
+      );
+    }
     const provider = await this.resolveProvider(
       config.get<string>('provider', 'google')
     );
@@ -85,6 +115,7 @@ export class TranslationService {
       translated: result.translated,
       providerLabel: provider.label,
       detectedSourceLanguage: result.detectedSourceLanguage,
+      sourceLanguage,
       targetLanguage,
     };
 

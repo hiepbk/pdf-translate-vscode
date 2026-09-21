@@ -21,7 +21,10 @@ upstream's work; this fork adds the selection, cleaning and translation layer.
   sign-up; translation works the moment the extension is installed.
 - **DeepL optional**, for better prose. Its API key is kept in VS Code secret
   storage — never in `settings.json`, which gets synced and committed.
-- **Any target language**, `vi` by default.
+- **Pick the languages as you read.** The popup has source and target pickers
+  with a swap button; changing either re-translates the same passage on the
+  spot. The source can be left on **Auto-detect**. Defaults are English into
+  Vietnamese.
 - Results are cached per session, so re-selecting the same paragraph is instant.
 
 ## Setup
@@ -52,13 +55,29 @@ with no further configuration.
 2. Select some text, right-click, choose **Translate** (or press `Alt+T`).
 3. The popup can be dragged by its title bar; `Esc` or **Close** dismisses it.
 
+### Changing languages
+
+The popup's two dropdowns are the source and the target. Changing either
+re-translates the passage immediately, without closing the popup or moving it,
+so comparing two target languages is a single click.
+
+The change applies to that popup only. To make it the new default, press **Set
+as default** in the popup footer — a one-off check of a German paragraph should
+not quietly redefine what every future translation does. The same choices are
+available from the Command Palette as **PDF Translate: Select Source Language**
+and **Select Target Language**, and from the settings.
+
+**⇄** swaps the two. When the source is *Auto-detect* it swaps in whatever the
+last translation actually detected, since "auto" is not a language to translate
+into.
+
 ## Settings
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `pdf-translate.provider` | `google` | `google` (no account) or `deepl` (API key) |
 | `pdf-translate.targetLanguage` | `vi` | Language to translate into |
-| `pdf-translate.sourceLanguage` | `auto` | Language of the PDF, or `auto` |
+| `pdf-translate.sourceLanguage` | `en` | Language of the PDF, or `auto` to detect it |
 | `pdf-translate.cleanText` | `true` | Repair PDF text before translating |
 | `pdf-translate.removeHeadersFooters` | `true` | Drop running heads and page numbers |
 | `pdf-translate.showOriginal` | `true` | Show the cleaned source in the popup |
@@ -161,7 +180,12 @@ PDF.js distribution but is not what the extension loads.
 ## Tiếng Việt
 
 Bôi đen chữ trong PDF → chuột phải → **Translate** (hoặc `Alt+T`) → bản dịch
-hiện trong popup ngay cạnh đoạn văn. Mặc định dịch sang tiếng Việt.
+hiện trong popup ngay cạnh đoạn văn. Mặc định dịch từ tiếng Anh sang tiếng Việt.
+
+Trong popup có hai ô chọn ngôn ngữ: ô trái là ngôn ngữ nguồn (chọn được
+**Auto-detect** để tự nhận diện), ô phải là ngôn ngữ đích. Đổi ô nào thì dịch
+lại ngay đoạn đó, không phải bôi đen lại. Nút **⇄** để đảo nguồn và đích. Nếu
+muốn giữ lựa chọn đó làm mặc định thì bấm **Set as default**.
 
 Không cần đăng ký gì cả, không cần API key, không cần thẻ — cài xong là dùng
 được ngay, vì backend mặc định dùng Google Translate.

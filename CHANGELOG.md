@@ -13,6 +13,12 @@ First release of the fork.
   undoes end-of-line hyphenation, normalises ligatures, quotes, dashes and
   invisible spacing characters, and drops running headers, footers and page
   numbers that fall inside a selection spanning a page break.
+- Added source and target language pickers to the popup, with a swap button and
+  an **Auto-detect** source. Changing a language re-translates the open passage
+  in place; making it the default is a separate, explicit action. The same
+  choices are available as Command Palette commands and as settings dropdowns,
+  generated from one language table so the two cannot drift apart. Defaults are
+  English into Vietnamese.
 - Added two translation backends behind a `TranslationProvider` interface.
   Google Translate is the default and needs no account or API key; DeepL is
   opt-in via `pdf-translate.provider`, holds its key in VS Code secret storage,

@@ -1,5 +1,6 @@
 import { splitIntoChunks } from './cleanText';
 import { request } from './http';
+import { AUTO_DETECT, toDeepLCode } from './languages';
 import {
   TranslationError,
   TranslationProvider,
@@ -51,10 +52,10 @@ export class DeepLProvider implements TranslationProvider {
 
       const payload: Record<string, unknown> = {
         text: batch,
-        target_lang: req.targetLanguage.toUpperCase(),
+        target_lang: toDeepLCode(req.targetLanguage),
       };
-      if (req.sourceLanguage && req.sourceLanguage !== 'auto') {
-        payload.source_lang = req.sourceLanguage.toUpperCase();
+      if (req.sourceLanguage && req.sourceLanguage !== AUTO_DETECT) {
+        payload.source_lang = toDeepLCode(req.sourceLanguage);
       }
 
       const body = JSON.stringify(payload);

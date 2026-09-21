@@ -48,6 +48,15 @@ export class PdfCustomProvider implements vscode.CustomReadonlyEditorProvider {
     return this._activePreview;
   }
 
+  /**
+   * Tell every open preview to rebuild its language pickers. Called when the
+   * settings change, so a language chosen from the Command Palette or typed
+   * into settings.json shows up in previews that are already open.
+   */
+  public refreshLanguages(): void {
+    this._previews.forEach((preview) => preview.refreshLanguages());
+  }
+
   private setActivePreview(value: PdfPreview | undefined): void {
     this._activePreview = value;
   }

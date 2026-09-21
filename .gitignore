@@ -2,3 +2,5 @@ out
 node_modules
 *.vsix
 .vscode-test/
+# PDFs opened here for testing are not part of the extension.
+*.pdf

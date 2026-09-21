@@ -77,6 +77,22 @@ describe('DeepLProvider', () => {
     assert.strictEqual('source_lang' in body, false);
   });
 
+  it("sends DeepL's own spelling of a language code", async () => {
+    // Google calls Norwegian Bokmal "no" and that is what settings store;
+    // DeepL rejects "NO" and wants "NB".
+    const calls = stubResponse(200, OK_BODY);
+    await new DeepLProvider('k:fx').translate({
+      text: 'Hello.',
+      targetLanguage: 'no',
+      sourceLanguage: 'auto',
+      timeoutMs: 1000,
+    });
+    assert.strictEqual(
+      JSON.parse(calls[0].options.body as string).target_lang,
+      'NB'
+    );
+  });
+
   it('passes an explicit source language through', async () => {
     const calls = stubResponse(200, OK_BODY);
     await new DeepLProvider('k:fx').translate({

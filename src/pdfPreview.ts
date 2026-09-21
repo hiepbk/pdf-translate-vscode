@@ -2,9 +2,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Disposable } from './disposable';
 import { cleanPdfText } from './translate/cleanText';
+import {
+  AUTO_DETECT,
+  LANGUAGES,
+  targetLanguagesFor,
+} from './translate/languages';
 import { MissingApiKeyError } from './translate/provider';
 import {
   describeError,
+  LanguageOverrides,
   TranslationService,
 } from './translate/translationService';
 
@@ -56,7 +62,17 @@ export class PdfPreview extends Disposable {
             break;
           }
           case 'translate': {
-            this.translate(message.id, message.text);
+            this.translate(message.id, message.text, {
+              sourceLanguage: message.sourceLanguage,
+              targetLanguage: message.targetLanguage,
+            });
+            break;
+          }
+          case 'persist-languages': {
+            this.persistLanguages(
+              message.sourceLanguage,
+              message.targetLanguage
+            );
             break;
           }
         }
@@ -104,13 +120,17 @@ export class PdfPreview extends Disposable {
    * normal outcome of a network call, and a notification toast would be both
    * more intrusive and further from the text the user is reading.
    */
-  private async translate(id: string, text: string): Promise<void> {
+  private async translate(
+    id: string,
+    text: string,
+    overrides: LanguageOverrides
+  ): Promise<void> {
     const showOriginal = vscode.workspace
       .getConfiguration('pdf-translate')
       .get<boolean>('showOriginal', true);
 
     try {
-      const outcome = await this.translationService.translate(text);
+      const outcome = await this.translationService.translate(text, overrides);
       this.post({
         type: 'translate-result',
         id,
@@ -120,6 +140,7 @@ export class PdfPreview extends Disposable {
         translated: outcome.translated,
         providerLabel: outcome.providerLabel,
         detectedSourceLanguage: outcome.detectedSourceLanguage,
+        sourceLanguage: outcome.sourceLanguage,
         targetLanguage: outcome.targetLanguage,
       });
     } catch (error) {
@@ -144,6 +165,66 @@ export class PdfPreview extends Disposable {
         }
       }
     }
+  }
+
+  /**
+   * Make the popup's language choice the new default.
+   *
+   * Written at Global scope rather than Workspace: the language someone reads
+   * papers in belongs to them, not to whichever folder happens to be open.
+   */
+  private async persistLanguages(
+    sourceLanguage?: string,
+    targetLanguage?: string
+  ): Promise<void> {
+    const config = vscode.workspace.getConfiguration('pdf-translate');
+    if (sourceLanguage) {
+      await config.update(
+        'sourceLanguage',
+        sourceLanguage,
+        vscode.ConfigurationTarget.Global
+      );
+    }
+    if (targetLanguage) {
+      await config.update(
+        'targetLanguage',
+        targetLanguage,
+        vscode.ConfigurationTarget.Global
+      );
+    }
+  }
+
+  /**
+   * What the popup's language pickers need: the options to offer, and the
+   * current choices. The target list depends on the backend, because DeepL
+   * translates into fewer languages than Google and offering one it rejects
+   * only produces a failed request.
+   */
+  private languageSettings(): Record<string, unknown> {
+    const config = vscode.workspace.getConfiguration('pdf-translate');
+    const provider = config.get<string>('provider', 'google');
+
+    return {
+      sourceLanguage: config.get<string>('sourceLanguage', AUTO_DETECT),
+      targetLanguage: config.get<string>('targetLanguage', 'vi'),
+      // Sources are unrestricted: both backends detect or accept any of these.
+      sources: LANGUAGES.map((language) => ({
+        code: language.code,
+        name: language.nativeName,
+      })),
+      targets: targetLanguagesFor(provider).map((language) => ({
+        code: language.code,
+        name: language.nativeName,
+      })),
+    };
+  }
+
+  /**
+   * Push the language settings to the webview after they change elsewhere, so
+   * the popup's pickers do not drift from the settings they were built from.
+   */
+  public refreshLanguages(): void {
+    this.post({ type: 'languages', translate: this.languageSettings() });
   }
 
   private post(message: Record<string, unknown>): void {
@@ -183,6 +264,7 @@ export class PdfPreview extends Disposable {
     const settings = {
       cMapUrl: resolveAsUri('lib', 'web', 'cmaps/').toString(),
       path: docPath.toString(),
+      translate: this.languageSettings(),
       defaults: {
         cursor: config.get('default.cursor') as string,
         scale: config.get('default.scale') as string,

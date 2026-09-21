@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import { PdfCustomProvider } from './pdfProvider';
 import {
+  AUTO_DETECT,
+  languageName,
+  targetLanguagesFor,
+} from './translate/languages';
+import {
   DEEPL_SECRET_KEY,
   TranslationService,
 } from './translate/translationService';
@@ -32,17 +37,68 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('pdf-translate.clearDeepLApiKey', () =>
       clearDeepLApiKey(context)
+    ),
+    vscode.commands.registerCommand('pdf-translate.selectTargetLanguage', () =>
+      selectLanguage('target')
+    ),
+    vscode.commands.registerCommand('pdf-translate.selectSourceLanguage', () =>
+      selectLanguage('source')
     )
   );
 
-  // A cached result belongs to the backend and language pair that produced it.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('pdf-translate')) {
-        translationService.clearCache();
+      if (!event.affectsConfiguration('pdf-translate')) {
+        return;
       }
+      // A cached result belongs to the backend and language pair that made it.
+      translationService.clearCache();
+      // Open previews built their language pickers from the old settings.
+      provider.refreshLanguages();
     })
   );
+}
+
+/**
+ * Pick a language from the Command Palette, as an alternative to the popup's
+ * dropdowns for anyone who would rather not reach for the mouse.
+ */
+async function selectLanguage(which: 'source' | 'target'): Promise<void> {
+  const config = vscode.workspace.getConfiguration('pdf-translate');
+  const isSource = which === 'source';
+  const key = isSource ? 'sourceLanguage' : 'targetLanguage';
+  const current = config.get<string>(key, isSource ? AUTO_DETECT : 'vi');
+
+  const choices = targetLanguagesFor(
+    config.get<string>('provider', 'google')
+  ).map((language) => ({
+    label: language.name,
+    description: language.nativeName,
+    detail: language.code === current ? 'Current' : undefined,
+    code: language.code,
+  }));
+
+  if (isSource) {
+    // Only the source may be left to the backend to work out.
+    choices.unshift({
+      label: 'Auto-detect',
+      description: 'Let the translation backend identify the language',
+      detail: current === AUTO_DETECT ? 'Current' : undefined,
+      code: AUTO_DETECT,
+    });
+  }
+
+  const picked = await vscode.window.showQuickPick(choices, {
+    title: isSource ? 'Language of the PDF' : 'Language to translate into',
+    matchOnDescription: true,
+    placeHolder: `Currently ${languageName(current)}`,
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  await config.update(key, picked.code, vscode.ConfigurationTarget.Global);
 }
 
 async function setDeepLApiKey(context: vscode.ExtensionContext): Promise<void> {

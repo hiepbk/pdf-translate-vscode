@@ -8,3 +8,7 @@ src/**
 .gitignore
 tsconfig.json
 vsc-extension-quickstart.md
+
+# Test PDFs dropped into the repo for trying the viewer out: never part of
+# the extension, and a stray 20 MB paper would otherwise ship inside the VSIX.
+*.pdf
