@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { cleanPdfText } from './cleanText';
 import { DeepLProvider } from './deeplProvider';
+import { GoogleTranslateProvider } from './googleProvider';
 import {
   MissingApiKeyError,
   TranslationError,
@@ -54,7 +55,9 @@ export class TranslationService {
     const targetLanguage = config.get<string>('targetLanguage', 'vi').trim();
     const sourceLanguage = config.get<string>('sourceLanguage', 'auto').trim();
     const timeoutMs = config.get<number>('timeout', 15000);
-    const provider = await this.resolveProvider();
+    const provider = await this.resolveProvider(
+      config.get<string>('provider', 'google')
+    );
 
     // Serialising the inputs as JSON makes the key unambiguous: no separator
     // character has to be reserved, so no selection can collide with another.
@@ -106,18 +109,21 @@ export class TranslationService {
   }
 
   /**
-   * DeepL is currently the only backend. It is resolved through the
-   * `TranslationProvider` interface rather than constructed inline so that a
-   * second backend can be added without touching anything above this method.
+   * Google is the default because it needs no account: the feature works the
+   * moment the extension is installed. DeepL is opt-in for anyone who wants a
+   * documented API and better prose behind it.
    */
-  private async resolveProvider(): Promise<TranslationProvider> {
-    const apiKey = await this.secrets.get(DEEPL_SECRET_KEY);
-    if (!apiKey) {
-      throw new MissingApiKeyError(
-        'No DeepL API key is stored yet. Translation needs one — a free key from deepl.com works.'
-      );
+  private async resolveProvider(id: string): Promise<TranslationProvider> {
+    if (id === 'deepl') {
+      const apiKey = await this.secrets.get(DEEPL_SECRET_KEY);
+      if (!apiKey) {
+        throw new MissingApiKeyError(
+          'The DeepL backend is selected but no API key is stored. Add one, or set "pdf-translate.provider" back to "google", which needs no key.'
+        );
+      }
+      return new DeepLProvider(apiKey);
     }
-    return new DeepLProvider(apiKey);
+    return new GoogleTranslateProvider();
   }
 }
 

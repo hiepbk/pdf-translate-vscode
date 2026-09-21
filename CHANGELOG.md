@@ -13,19 +13,25 @@ First release of the fork.
   undoes end-of-line hyphenation, normalises ligatures, quotes, dashes and
   invisible spacing characters, and drops running headers, footers and page
   numbers that fall inside a selection spanning a page break.
-- Added DeepL as the translation backend, behind a `TranslationProvider`
-  interface so a second backend can be added without touching the viewer. The
-  API key is held in VS Code secret storage, and the free or paid API host is
-  chosen from the key.
+- Added two translation backends behind a `TranslationProvider` interface.
+  Google Translate is the default and needs no account or API key; DeepL is
+  opt-in via `pdf-translate.provider`, holds its key in VS Code secret storage,
+  and picks the free or paid API host from the key.
 - Renamed the extension to `hiepbk.pdf-translate`, the custom editor to
   `pdfTranslate.preview` and the settings section to `pdf-translate.*`, so this
   fork can be installed alongside the original without either overwriting the
   other.
 
-A backend using Google's undocumented `translate_a/single` endpoint was written
-and then dropped before release: it answers HTTP 429 on some university and
-corporate networks no matter how the request is shaped, which makes it unfit as
-the default path.
+### A note on the Google endpoint
+
+The keyless backend calls Google's undocumented `translate_a/single` with
+`client=dict-chrome-ex`, not the widely cited `client=gtx`. On many
+university and corporate networks `client=gtx` is refused with an HTTP 429
+"unusual traffic" page regardless of user agent, while `dict-chrome-ex` is
+served normally and returns the same response shape. Chunk sizes are computed
+from the percent-encoded length rather than the character count, so that a
+selection in a script such as Chinese — which encodes nine times larger — cannot
+overflow the query string.
 
 For the history of the upstream viewer this fork is based on, see
 [CHANGELOG.upstream.md](CHANGELOG.upstream.md).

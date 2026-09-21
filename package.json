@@ -64,6 +64,19 @@
       "type": "object",
       "title": "PDF Viewer with Translate",
       "properties": {
+        "pdf-translate.provider": {
+          "markdownDescription": "Translation backend.\n\n- `google` needs no account and works immediately. It uses an undocumented Google endpoint, so it can rate-limit or change without notice.\n- `deepl` uses the official DeepL API. Better prose, but it needs an API key: run **PDF Translate: Set DeepL API Key**.",
+          "type": "string",
+          "default": "google",
+          "enum": [
+            "google",
+            "deepl"
+          ],
+          "enumDescriptions": [
+            "Google Translate — no account, no API key",
+            "DeepL — requires an API key"
+          ]
+        },
         "pdf-translate.targetLanguage": {
           "markdownDescription": "Language to translate into, as a language code such as `vi`, `en` or `ja`.",
           "type": "string",
