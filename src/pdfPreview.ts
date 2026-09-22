@@ -20,14 +20,36 @@ function escapeAttribute(value: string | vscode.Uri): string {
 
 type PreviewState = 'Disposed' | 'Visible' | 'Active';
 
+/**
+ * Serialising a large PDF takes a moment, but a save that never settles would
+ * hang the editor's save indicator forever, so it is bounded.
+ */
+const SAVE_TIMEOUT_MS = 60000;
+
+/**
+ * How long after a save of our own the watcher's change event is treated as an
+ * echo of that write rather than as an edit from elsewhere.
+ */
+const SELF_WRITE_GRACE_MS = 3000;
+
 export class PdfPreview extends Disposable {
   private _previewState: PreviewState = 'Visible';
+
+  /** Pending `getAnnotatedPdf` calls, keyed by the id sent to the webview. */
+  private readonly _pendingSaves = new Map<
+    string,
+    { resolve: (bytes: Uint8Array) => void; reject: (error: Error) => void }
+  >();
+  private _saveCounter = 0;
+  /** Timestamp until which a watcher change is an echo of our own write. */
+  private _selfWriteUntil = 0;
 
   constructor(
     private readonly extensionRoot: vscode.Uri,
     private readonly resource: vscode.Uri,
     private readonly webviewEditor: vscode.WebviewPanel,
-    private readonly translationService: TranslationService
+    private readonly translationService: TranslationService,
+    private readonly onEdited: () => void
   ) {
     super();
     const resourceRoot = resource.with({
@@ -68,6 +90,21 @@ export class PdfPreview extends Disposable {
             });
             break;
           }
+          case 'edited': {
+            // PDF.js reported that its annotation storage changed.
+            this.onEdited();
+            break;
+          }
+          case 'request-save': {
+            // Ctrl+S pressed with focus inside the webview, where VS Code's
+            // own keybindings never see it.
+            vscode.commands.executeCommand('workbench.action.files.save');
+            break;
+          }
+          case 'annotated-pdf': {
+            this.receiveAnnotatedPdf(message);
+            break;
+          }
           case 'persist-languages': {
             this.persistLanguages(
               message.sourceLanguage,
@@ -96,9 +133,17 @@ export class PdfPreview extends Disposable {
     );
     this._register(
       watcher.onDidChange((e) => {
-        if (e.toString() === this.resource.toString()) {
-          this.reload();
+        if (e.toString() !== this.resource.toString()) {
+          return;
         }
+        // The watcher fires for our own saves too. Reloading then would throw
+        // away the editor state — the open text box, the current tool — and
+        // reload a file the webview already agrees with. Only a change made by
+        // something else is worth reacting to.
+        if (this.consumeSelfWrite()) {
+          return;
+        }
+        this.reload();
       })
     );
     this._register(
@@ -165,6 +210,98 @@ export class PdfPreview extends Disposable {
         }
       }
     }
+  }
+
+  /**
+   * Ask the webview to serialise the document, annotations included.
+   *
+   * Only PDF.js can do this: the annotations live in its editor layer and its
+   * writer is what turns them back into PDF objects. The bytes come back as
+   * base64 because a webview message is JSON — a `Uint8Array` would arrive as
+   * an object with one numbered key per byte, which for a paper-sized PDF is
+   * millions of keys.
+   */
+  public getAnnotatedPdf(): Promise<Uint8Array> {
+    if (this._previewState === 'Disposed') {
+      return Promise.reject(
+        new Error('The PDF editor was closed before the save completed.')
+      );
+    }
+
+    const id = `save-${++this._saveCounter}`;
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this._pendingSaves.delete(id)) {
+          reject(
+            new Error('Timed out waiting for the PDF editor to produce a file.')
+          );
+        }
+      }, SAVE_TIMEOUT_MS);
+
+      this._pendingSaves.set(id, {
+        resolve: (bytes): void => {
+          clearTimeout(timeout);
+          resolve(bytes);
+        },
+        reject: (error): void => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+
+      this.post({ type: 'get-annotated-pdf', id });
+    });
+  }
+
+  private receiveAnnotatedPdf(message: {
+    id: string;
+    ok: boolean;
+    data?: string;
+    error?: string;
+  }): void {
+    const pending = this._pendingSaves.get(message.id);
+    if (!pending) {
+      return;
+    }
+    this._pendingSaves.delete(message.id);
+
+    if (!message.ok || typeof message.data !== 'string') {
+      pending.reject(
+        new Error(message.error || 'The PDF editor could not save the file.')
+      );
+      return;
+    }
+    pending.resolve(Buffer.from(message.data, 'base64'));
+  }
+
+  /** Tell the webview the file on disk now matches what it holds. */
+  public markSaved(): void {
+    this.post({ type: 'saved' });
+  }
+
+  /**
+   * Note that this extension is about to write the file, so the change the
+   * watcher reports can be ignored.
+   *
+   * The flag expires on its own: a save that somehow produced no filesystem
+   * event would otherwise leave it set, and the next genuine external change
+   * would be swallowed.
+   */
+  public expectSelfWrite(): void {
+    this._selfWriteUntil = Date.now() + SELF_WRITE_GRACE_MS;
+  }
+
+  private consumeSelfWrite(): boolean {
+    if (Date.now() > this._selfWriteUntil) {
+      return false;
+    }
+    this._selfWriteUntil = 0;
+    return true;
+  }
+
+  /** Throw away unsaved annotations by reloading the file from disk. */
+  public async revert(): Promise<void> {
+    this.post({ type: 'reload' });
   }
 
   /**
@@ -299,6 +436,7 @@ export class PdfPreview extends Disposable {
 <script src="${resolveAsUri('lib', 'web', 'viewer.js')}"></script>
 <script src="${resolveAsUri('lib', 'main.js')}"></script>
 <script src="${resolveAsUri('lib', 'translate.js')}"></script>
+<script src="${resolveAsUri('lib', 'annotate.js')}"></script>
 </head>`;
 
     const body = `<body tabindex="1">
@@ -541,19 +679,24 @@ export class PdfPreview extends Disposable {
                   <span data-l10n-id="save_label">Save</span>
                 </button>
 
-                <div class="verticalToolbarSeparator hiddenMediumView"></div>
+                </div>
 
+                <!--
+                  The annotation editors ship with PDF.js and upstream hides
+                  them, because upstream's viewer is read-only and anything
+                  drawn would be lost on close. This fork can write the file
+                  back, so they are shown.
+                -->
                 <div id="editorModeButtons" class="splitToolbarButton toggled" role="radiogroup">
-                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Text" role="radio" aria-checked="false" tabindex="34" data-l10n-id="editor_free_text2">
+                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Add a text box" role="radio" aria-checked="false" tabindex="34" data-l10n-id="editor_free_text2">
                     <span data-l10n-id="editor_free_text2_label">Text</span>
                   </button>
-                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw" role="radio" aria-checked="false" tabindex="35" data-l10n-id="editor_ink2">
+                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw freehand" role="radio" aria-checked="false" tabindex="35" data-l10n-id="editor_ink2">
                     <span data-l10n-id="editor_ink2_label">Draw</span>
                   </button>
                 </div>
 
                 <div id="editorModeSeparator" class="verticalToolbarSeparator"></div>
-                </div>
                 <button id="secondaryToolbarToggle" class="toolbarButton" title="Tools" tabindex="48" data-l10n-id="tools" aria-expanded="false" aria-controls="secondaryToolbar">
                   <span data-l10n-id="tools_label">Tools</span>
                 </button>

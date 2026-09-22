@@ -25,6 +25,9 @@ upstream's work; this fork adds the selection, cleaning and translation layer.
   with a swap button; changing either re-translates the same passage on the
   spot. The source can be left on **Auto-detect**. Defaults are English into
   Vietnamese.
+- **Annotate and save.** **Text** adds a text box, **Draw** draws freehand, and
+  `Ctrl+S` writes them into the PDF itself — so any other reader, Foxit and
+  Adobe included, sees them.
 - Results are cached per session, so re-selecting the same paragraph is instant.
 
 ## Setup
@@ -70,6 +73,24 @@ and **Select Target Language**, and from the settings.
 **⇄** swaps the two. When the source is *Auto-detect* it swaps in whatever the
 last translation actually detected, since "auto" is not a language to translate
 into.
+
+## Annotating
+
+**Text** and **Draw** sit in the toolbar. Both are PDF.js's own editors —
+upstream ships them but keeps them hidden, because its viewer cannot save and
+anything drawn would be lost on close.
+
+`Ctrl+S` saves. The tab shows the usual dirty dot while there are unsaved
+annotations, `Ctrl+Z` undoes within the editor, and **File → Revert** throws
+away everything since the last save. Annotations are written into the PDF as
+real annotation objects, not into a sidecar file, so they travel with the
+document.
+
+Highlighting is not here yet: the editor for it arrived in PDF.js 4.3 and the
+bundled build is 3.1.81.
+
+> Saving rewrites the PDF in place. Keep papers you cannot replace under version
+> control or a backup, as you would with any file an editor can write to.
 
 ## Settings
 

@@ -1,5 +1,26 @@
 # Change Log
 
+## Unreleased
+
+- Added annotation editing: **Text** places a text box and **Draw** draws
+  freehand, both PDF.js's own editors, which upstream ships but hides because a
+  read-only viewer would lose anything drawn on close.
+- Made the custom editor editable, so `Ctrl+S` writes the annotations into the
+  PDF itself and VS Code supplies the dirty marker, Revert and hot exit.
+  Undo stays inside PDF.js rather than being driven by VS Code, which keeps one
+  undo stack instead of two that can disagree.
+- PDF.js is the only thing that can serialise annotations back into a PDF, so a
+  save is a round-trip to the webview. The bytes cross as base64: a webview
+  message is JSON, and a `Uint8Array` would arrive as an object with one
+  numbered key per byte.
+- The file watcher no longer reloads the document after this extension's own
+  save. It used to, which discarded the editor state and reloaded a file the
+  webview already agreed with.
+
+Highlighting is not included. PDF.js gained a highlight editor in 4.3 and the
+bundled build is 3.1.81, so it needs either an upgrade across three major
+versions or a highlight layer written from scratch.
+
 ## 0.1.0
 
 First release of the fork.
