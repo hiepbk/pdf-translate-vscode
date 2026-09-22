@@ -12,3 +12,16 @@ vsc-extension-quickstart.md
 # Test PDFs dropped into the repo for trying the viewer out: never part of
 # the extension, and a stray 20 MB paper would otherwise ship inside the VSIX.
 *.pdf
+
+# Runtime dependencies ship their CommonJS build only. pdf-lib resolves to
+# cjs/, standard-fonts to lib/, upng to cjs/ and pako to lib/, so the bundled
+# dist/ and es/ trees are dead weight — about 6 MB of it, in four redundant
+# copies of the same library.
+node_modules/**/dist/**
+node_modules/**/es/**
+node_modules/**/src/**
+node_modules/**/*.ts
+node_modules/**/*.flow
+node_modules/pdf-lib/ts3.4/**
+node_modules/tslib/modules/**
+node_modules/tslib/test/**

@@ -86,8 +86,14 @@ away everything since the last save. Annotations are written into the PDF as
 real annotation objects, not into a sidecar file, so they travel with the
 document.
 
-Highlighting is not here yet: the editor for it arrived in PDF.js 4.3 and the
-bundled build is 3.1.81.
+**Highlight** is this fork's own. The bundled PDF.js is 3.1.81 and its highlight
+editor arrived in 4.3, so selecting text with Highlight on draws an overlay, and
+the extension host writes real `/Highlight` annotations into the file when you
+save — the same kind Foxit and Adobe write, complete with QuadPoints, so they
+read them back.
+
+Click a highlight to remove it while it is still unsaved. Once written into the
+file it is a normal PDF annotation, and removing it needs a PDF editor.
 
 > Saving rewrites the PDF in place. Keep papers you cannot replace under version
 > control or a backup, as you would with any file an editor can write to.

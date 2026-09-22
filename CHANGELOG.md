@@ -16,10 +16,17 @@
 - The file watcher no longer reloads the document after this extension's own
   save. It used to, which discarded the editor state and reloaded a file the
   webview already agreed with.
-
-Highlighting is not included. PDF.js gained a highlight editor in 4.3 and the
-bundled build is 3.1.81, so it needs either an upgrade across three major
-versions or a highlight layer written from scratch.
+- Added text highlighting, written as real `/Highlight` annotations. The
+  bundled PDF.js is 3.1.81 and its `saveNewAnnotations` understands only
+  FreeText and Ink, so highlights cannot leave through its save path; they are
+  measured in the webview, converted to PDF user space at the moment of
+  selection — screen coordinates would be wrong at the next zoom — and written
+  by pdf-lib on the host after PDF.js has produced everything it does handle.
+  Adjacent fragments are merged into one bar per line, so a highlighted
+  sentence is not a row of boxes with seams.
+- Trimmed the `dist/` and `es/` trees of the runtime dependencies from the
+  package: every one of them resolves to a CommonJS build elsewhere, and the
+  unused copies were 2.7 MB of the VSIX.
 
 ## 0.1.0
 

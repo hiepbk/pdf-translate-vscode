@@ -7,6 +7,7 @@ import {
   LANGUAGES,
   targetLanguagesFor,
 } from './translate/languages';
+import { applyHighlights, Highlight } from './annotate/highlights';
 import { MissingApiKeyError } from './translate/provider';
 import {
   describeError,
@@ -43,6 +44,8 @@ export class PdfPreview extends Disposable {
   private _saveCounter = 0;
   /** Timestamp until which a watcher change is an echo of our own write. */
   private _selfWriteUntil = 0;
+  /** Highlights drawn but not yet written into the file. */
+  private _highlights: Highlight[] = [];
 
   constructor(
     private readonly extensionRoot: vscode.Uri,
@@ -103,6 +106,12 @@ export class PdfPreview extends Disposable {
           }
           case 'annotated-pdf': {
             this.receiveAnnotatedPdf(message);
+            break;
+          }
+          case 'highlights': {
+            // The webview owns the unsaved highlights; the host keeps a copy
+            // so that a save can write them without another round-trip.
+            this._highlights = message.highlights || [];
             break;
           }
           case 'persist-languages': {
@@ -274,6 +283,18 @@ export class PdfPreview extends Disposable {
     pending.resolve(Buffer.from(message.data, 'base64'));
   }
 
+  /**
+   * The document as it should be written to disk.
+   *
+   * Two writers in sequence, because neither can do the other's job: PDF.js
+   * serialises the text boxes and drawings it owns, then the highlights are
+   * added to that result, since the bundled PDF.js is too old to write them.
+   */
+  public async getSaveableBytes(): Promise<Uint8Array> {
+    const fromPdfJs = await this.getAnnotatedPdf();
+    return applyHighlights(fromPdfJs, this._highlights);
+  }
+
   /** Tell the webview the file on disk now matches what it holds. */
   public markSaved(): void {
     this.post({ type: 'saved' });
@@ -437,6 +458,7 @@ export class PdfPreview extends Disposable {
 <script src="${resolveAsUri('lib', 'main.js')}"></script>
 <script src="${resolveAsUri('lib', 'translate.js')}"></script>
 <script src="${resolveAsUri('lib', 'annotate.js')}"></script>
+<script src="${resolveAsUri('lib', 'highlight.js')}"></script>
 </head>`;
 
     const body = `<body tabindex="1">
@@ -695,6 +717,17 @@ export class PdfPreview extends Disposable {
                     <span data-l10n-id="editor_ink2_label">Draw</span>
                   </button>
                 </div>
+
+                <!--
+                  Highlighting is this fork's own: PDF.js gained a highlight
+                  editor in 4.3 and the bundled build is 3.1.81, so the overlay
+                  is drawn by lib/highlight.js and written into the file by the
+                  extension host.
+                -->
+                <button id="pdfTranslateHighlight" class="toolbarButton" title="Highlight selected text" role="radio" aria-checked="false" tabindex="36">
+                  <span>Highlight</span>
+                </button>
+                <input type="color" id="pdfTranslateHighlightColor" value="#ffd400" title="Highlight colour" tabindex="37" hidden>
 
                 <div id="editorModeSeparator" class="verticalToolbarSeparator"></div>
                 <button id="secondaryToolbarToggle" class="toolbarButton" title="Tools" tabindex="48" data-l10n-id="tools" aria-expanded="false" aria-controls="secondaryToolbar">

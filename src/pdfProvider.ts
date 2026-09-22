@@ -124,7 +124,7 @@ export class PdfCustomProvider
     cancellation: vscode.CancellationToken
   ): Promise<void> {
     const preview = this.previewFor(document);
-    const bytes = await preview.getAnnotatedPdf();
+    const bytes = await preview.getSaveableBytes();
     if (cancellation.isCancellationRequested) {
       return;
     }
