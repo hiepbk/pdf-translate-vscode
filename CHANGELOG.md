@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.2.0
 
 - Added an **Erase** tool. Click any annotation already in the file — a
   highlight, a text box, a drawing, made in this session or found there on
