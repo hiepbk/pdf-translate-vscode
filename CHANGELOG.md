@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Stopped the viewer swallowing `Ctrl+Shift+P`. A webview is a Chromium
+  frame, and Chromium claims that combination for its system print dialog, so
+  pressing it over a PDF opened a print dialog instead of VS Code's Command
+  Palette. The keystroke is now cancelled for Chromium and deliberately left
+  to travel on to VS Code, rather than being handled outright — swallowing it
+  would trade a broken print for a broken Command Palette. `Ctrl+P` is
+  cancelled the same way, and printing is disabled outright: this viewer never
+  had a print feature to lose, since upstream hides those buttons.
+
 - Added undo and redo for every kind of edit. Highlights had none at all —
   they could only be clicked away — and PDF.js's own `Ctrl+Z` only fired when
   focus happened to be inside an editor layer, so an edit could look

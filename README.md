@@ -121,6 +121,11 @@ The colour picker beside the button changes the colour for the current
 document; `pdf-translate.highlightColor` sets what it starts from, and that is
 yellow.
 
+There is no printing. A webview is a Chromium frame that claims `Ctrl+P` and
+`Ctrl+Shift+P` for its print dialogs, and `Ctrl+Shift+P` is how VS Code opens
+the Command Palette — so those keystrokes are cancelled for Chromium and passed
+on to VS Code instead.
+
 > Saving rewrites the PDF in place. Keep papers you cannot replace under version
 > control or a backup, as you would with any file an editor can write to.
 

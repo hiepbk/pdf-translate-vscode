@@ -107,6 +107,11 @@ interface Harness {
   editorEdit(): void;
   /** How many times PDF.js's own undo() was called. */
   pdfjsUndoCount(): number;
+  /** What a keystroke did to the event: cancelled, stopped, or neither. */
+  pressAndWatch(
+    key: string,
+    modifiers?: Record<string, boolean>
+  ): { prevented: boolean; stopped: boolean };
 }
 
 async function run(): Promise<Harness> {
@@ -227,7 +232,7 @@ async function run(): Promise<Harness> {
   };
   vm.createContext(sandbox);
 
-  ['highlight.js', 'toolbar.js', 'undo.js'].forEach((name) => {
+  ['highlight.js', 'toolbar.js', 'undo.js', 'noPrint.js'].forEach((name) => {
     vm.runInContext(fs.readFileSync(path.join(LIB, name), 'utf8'), sandbox, {
       filename: name,
     });
@@ -320,6 +325,29 @@ async function run(): Promise<Harness> {
       );
     },
     pdfjsUndoCount: (): number => pdfjsUndos,
+    pressAndWatch: (key, modifiers = {}) => {
+      const seen = { prevented: false, stopped: false };
+      const target = makeElement();
+      target.closest = (): null => null;
+      (windowListeners['keydown'] || []).forEach((fn) =>
+        fn({
+          key,
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          target,
+          preventDefault: (): void => {
+            seen.prevented = true;
+          },
+          stopPropagation: (): void => {
+            seen.stopped = true;
+          },
+          ...modifiers,
+        })
+      );
+      return seen;
+    },
   };
 }
 
@@ -548,5 +576,49 @@ describe('Ctrl+Z', () => {
     harness.press('z'); // consumes PDF.js's single real undo
     harness.press('z'); // must skip the surplus markers and reach the highlight
     assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+});
+
+describe('printing', () => {
+  /*
+   * A webview is a Chromium frame, and Chromium claims Ctrl+P for print
+   * preview and Ctrl+Shift+P for the system print dialog. Ctrl+Shift+P is how
+   * VS Code opens the Command Palette, so over a PDF it opened a print dialog
+   * instead. The keystroke has to be cancelled for Chromium and still allowed
+   * through to VS Code, which is a narrower thing than "handle the key".
+   */
+  it('cancels Chromium printing on Ctrl+Shift+P', async () => {
+    const harness = await run();
+    const seen = harness.pressAndWatch('p', { shiftKey: true });
+    assert.strictEqual(seen.prevented, true, 'Chromium must not print');
+  });
+
+  it('still lets Ctrl+Shift+P reach VS Code', async () => {
+    // Stopping propagation would trade a broken print for a broken Command
+    // Palette, which is the shortcut the user actually wanted.
+    const harness = await run();
+    const seen = harness.pressAndWatch('p', { shiftKey: true });
+    assert.strictEqual(seen.stopped, false, 'the keystroke must travel on');
+  });
+
+  it('cancels Chromium printing on Ctrl+P too', async () => {
+    const harness = await run();
+    const seen = harness.pressAndWatch('p');
+    assert.strictEqual(seen.prevented, true);
+    assert.strictEqual(seen.stopped, false);
+  });
+
+  it('leaves Ctrl+Alt+P alone', async () => {
+    // That combination is PDF.js's presentation mode, not a print.
+    const harness = await run();
+    const seen = harness.pressAndWatch('p', { altKey: true });
+    assert.strictEqual(seen.prevented, false);
+  });
+
+  it('leaves unrelated Ctrl combinations to VS Code', async () => {
+    const harness = await run();
+    const seen = harness.pressAndWatch('b');
+    assert.strictEqual(seen.prevented, false);
+    assert.strictEqual(seen.stopped, false);
   });
 });
