@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-- Added a Foxit-style tool group to the toolbar — **Hand**, **Select**,
-  **Highlight**, **Typewriter**, **Draw** — with exactly one active at a time.
+- Added a Foxit-style tool group to the toolbar — **Select**, **Highlight**,
+  **Typewriter**, **Draw** — with exactly one active at a time.
   PDF.js keeps cursor tools and annotation editor modes in two unrelated
-  systems that can both be active at once, and buries Hand and Select in the
+  systems that can both be active at once, and buries the text cursor in the
   Tools menu; one place now decides which tool is active and tells whichever
-  system needs telling.
+  system needs telling. There is no hand tool: the wheel and the scrollbar
+  scroll, and a reader of papers wants the text cursor by default.
 - Fixed the highlight covering the text it highlighted. The overlay carried a
   `z-index`, which turned it into a stacking context; a blended element only
   blends with the backdrop inside its own stacking context, so `multiply` had
@@ -15,7 +16,16 @@
   Removing the z-index restores the blend, and the overlay colour now also
   carries alpha so the text stays readable even where blending does not apply.
 - Added `pdf-translate.highlightColor`, defaulting to yellow, as the colour new
-  highlights start from.
+  highlights start from. The Highlight button's own icon is yellow too.
+- Fixed highlighting doing nothing at all: a backtick inside a CSS comment
+  closed the template literal holding the stylesheet, so `lib/highlight.js` was
+  a syntax error and never ran. Nothing caught it — tsc does not see `lib/` and
+  eslint only runs over `src/` — so the test suite now compiles every webview
+  script and drives the highlight path end to end against a stub DOM.
+- Toolbar icons are inlined as data URIs. Reusing PDF.js's icon custom
+  properties from an injected stylesheet left the buttons blank: their values
+  are relative `url()`s, which do not resolve the same way outside the
+  stylesheet that defines them.
 - Added annotation editing: **Text** places a text box and **Draw** draws
   freehand, both PDF.js's own editors, which upstream ships but hides because a
   read-only viewer would lose anything drawn on close.

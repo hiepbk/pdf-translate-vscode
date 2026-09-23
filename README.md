@@ -81,17 +81,20 @@ releases the others:
 
 | Tool | What it does |
 | --- | --- |
-| **Hand** | Drag the page to scroll |
-| **Select** | Select text, to copy or translate |
-| **Highlight** | Select text to mark it, yellow by default |
+| **Select** | Select text, to copy or translate — the default |
+| **Highlight** | Select text to mark it, yellow |
 | **Typewriter** | Click to place a text box and type |
 | **Draw** | Freehand pen |
 
 Typewriter and Draw are PDF.js's own editors, which upstream ships but hides
-because its viewer cannot save and anything drawn would be lost on close. Hand
-and Select drive PDF.js's cursor tools, which it otherwise leaves in the Tools
-menu. PDF.js treats those two as unrelated systems that can both be active at
-once, so this fork keeps exactly one tool on at a time.
+because its viewer cannot save and anything drawn would be lost on close.
+Select drives PDF.js's text cursor, which it otherwise leaves in the Tools
+menu. PDF.js treats cursor tools and editor modes as unrelated systems that can
+both be active at once, so this fork keeps exactly one tool on at a time.
+
+There is no hand tool: the wheel and the scrollbar scroll, and a reader of
+papers wants the text cursor. It is still in the Tools menu for anyone who
+wants it.
 
 `Ctrl+S` saves. The tab shows the usual dirty dot while there are unsaved
 annotations, `Ctrl+Z` undoes within the editor, and **File → Revert** throws

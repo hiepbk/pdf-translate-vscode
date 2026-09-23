@@ -706,21 +706,22 @@ export class PdfPreview extends Disposable {
                 </div>
 
                 <!--
-                  One exclusive tool group, in the order a reader reaches for
-                  them. Hand and Select drive PDF.js's cursor tools, which it
-                  otherwise buries in the Tools menu; Highlight is this fork's
-                  own; Typewriter and Draw are PDF.js's annotation editors,
-                  which upstream ships but hides because its viewer is
+                  One exclusive tool group. Select is PDF.js's text cursor,
+                  which it otherwise buries in the Tools menu; Highlight is
+                  this fork's own; Typewriter and Draw are PDF.js's annotation
+                  editors, which upstream ships but hides because its viewer is
                   read-only and anything drawn would be lost on close.
 
-                  lib/toolbar.js keeps exactly one of them active, since PDF.js
+                  The hand tool is deliberately absent: scrolling works with
+                  the wheel and the scrollbar, and a reader of papers wants the
+                  text cursor by default. It is still in the Tools menu for
+                  anyone who wants it.
+
+                  lib/toolbar.js keeps exactly one of these active, since PDF.js
                   treats cursor tools and editor modes as unrelated systems
                   that can both be "on" at once.
                 -->
                 <div id="pdfTranslateTools" class="splitToolbarButton toggled" role="radiogroup">
-                  <button id="pdfTranslateHand" class="toolbarButton" title="Hand — drag to scroll" role="radio" aria-checked="false" tabindex="34">
-                    <span>Hand</span>
-                  </button>
                   <button id="pdfTranslateSelect" class="toolbarButton" title="Select text" role="radio" aria-checked="true" tabindex="35">
                     <span>Select</span>
                   </button>
