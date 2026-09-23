@@ -25,9 +25,9 @@ upstream's work; this fork adds the selection, cleaning and translation layer.
   with a swap button; changing either re-translates the same passage on the
   spot. The source can be left on **Auto-detect**. Defaults are English into
   Vietnamese.
-- **Annotate and save.** **Text** adds a text box, **Draw** draws freehand, and
-  `Ctrl+S` writes them into the PDF itself — so any other reader, Foxit and
-  Adobe included, sees them.
+- **Annotate and save.** Hand, Select, Highlight, Typewriter and Draw in one
+  exclusive tool group, and `Ctrl+S` writes the result into the PDF itself — so
+  any other reader, Foxit and Adobe included, sees it.
 - Results are cached per session, so re-selecting the same paragraph is instant.
 
 ## Setup
@@ -76,9 +76,22 @@ into.
 
 ## Annotating
 
-**Text** and **Draw** sit in the toolbar. Both are PDF.js's own editors —
-upstream ships them but keeps them hidden, because its viewer cannot save and
-anything drawn would be lost on close.
+The toolbar holds one exclusive tool group, the way Foxit does — picking one
+releases the others:
+
+| Tool | What it does |
+| --- | --- |
+| **Hand** | Drag the page to scroll |
+| **Select** | Select text, to copy or translate |
+| **Highlight** | Select text to mark it, yellow by default |
+| **Typewriter** | Click to place a text box and type |
+| **Draw** | Freehand pen |
+
+Typewriter and Draw are PDF.js's own editors, which upstream ships but hides
+because its viewer cannot save and anything drawn would be lost on close. Hand
+and Select drive PDF.js's cursor tools, which it otherwise leaves in the Tools
+menu. PDF.js treats those two as unrelated systems that can both be active at
+once, so this fork keeps exactly one tool on at a time.
 
 `Ctrl+S` saves. The tab shows the usual dirty dot while there are unsaved
 annotations, `Ctrl+Z` undoes within the editor, and **File → Revert** throws
@@ -95,6 +108,10 @@ read them back.
 Click a highlight to remove it while it is still unsaved. Once written into the
 file it is a normal PDF annotation, and removing it needs a PDF editor.
 
+The colour picker beside the button changes the colour for the current
+document; `pdf-translate.highlightColor` sets what it starts from, and that is
+yellow.
+
 > Saving rewrites the PDF in place. Keep papers you cannot replace under version
 > control or a backup, as you would with any file an editor can write to.
 
@@ -108,6 +125,7 @@ file it is a normal PDF annotation, and removing it needs a PDF editor.
 | `pdf-translate.cleanText` | `true` | Repair PDF text before translating |
 | `pdf-translate.removeHeadersFooters` | `true` | Drop running heads and page numbers |
 | `pdf-translate.showOriginal` | `true` | Show the cleaned source in the popup |
+| `pdf-translate.highlightColor` | `#ffd400` | Colour new highlights start from |
 | `pdf-translate.timeout` | `15000` | Backend timeout, in milliseconds |
 
 The viewer's own defaults are inherited from upstream and live under

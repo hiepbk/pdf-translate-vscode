@@ -423,6 +423,7 @@ export class PdfPreview extends Disposable {
       cMapUrl: resolveAsUri('lib', 'web', 'cmaps/').toString(),
       path: docPath.toString(),
       translate: this.languageSettings(),
+      highlightColor: config.get<string>('highlightColor', '#ffd400'),
       defaults: {
         cursor: config.get('default.cursor') as string,
         scale: config.get('default.scale') as string,
@@ -459,6 +460,7 @@ export class PdfPreview extends Disposable {
 <script src="${resolveAsUri('lib', 'translate.js')}"></script>
 <script src="${resolveAsUri('lib', 'annotate.js')}"></script>
 <script src="${resolveAsUri('lib', 'highlight.js')}"></script>
+<script src="${resolveAsUri('lib', 'toolbar.js')}"></script>
 </head>`;
 
     const body = `<body tabindex="1">
@@ -704,30 +706,39 @@ export class PdfPreview extends Disposable {
                 </div>
 
                 <!--
-                  The annotation editors ship with PDF.js and upstream hides
-                  them, because upstream's viewer is read-only and anything
-                  drawn would be lost on close. This fork can write the file
-                  back, so they are shown.
+                  One exclusive tool group, in the order a reader reaches for
+                  them. Hand and Select drive PDF.js's cursor tools, which it
+                  otherwise buries in the Tools menu; Highlight is this fork's
+                  own; Typewriter and Draw are PDF.js's annotation editors,
+                  which upstream ships but hides because its viewer is
+                  read-only and anything drawn would be lost on close.
+
+                  lib/toolbar.js keeps exactly one of them active, since PDF.js
+                  treats cursor tools and editor modes as unrelated systems
+                  that can both be "on" at once.
                 -->
-                <div id="editorModeButtons" class="splitToolbarButton toggled" role="radiogroup">
-                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Add a text box" role="radio" aria-checked="false" tabindex="34" data-l10n-id="editor_free_text2">
-                    <span data-l10n-id="editor_free_text2_label">Text</span>
+                <div id="pdfTranslateTools" class="splitToolbarButton toggled" role="radiogroup">
+                  <button id="pdfTranslateHand" class="toolbarButton" title="Hand — drag to scroll" role="radio" aria-checked="false" tabindex="34">
+                    <span>Hand</span>
                   </button>
-                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw freehand" role="radio" aria-checked="false" tabindex="35" data-l10n-id="editor_ink2">
-                    <span data-l10n-id="editor_ink2_label">Draw</span>
+                  <button id="pdfTranslateSelect" class="toolbarButton" title="Select text" role="radio" aria-checked="true" tabindex="35">
+                    <span>Select</span>
+                  </button>
+                  <button id="pdfTranslateHighlight" class="toolbarButton" title="Highlight — select text to mark it" role="radio" aria-checked="false" tabindex="36">
+                    <span>Highlight</span>
                   </button>
                 </div>
 
-                <!--
-                  Highlighting is this fork's own: PDF.js gained a highlight
-                  editor in 4.3 and the bundled build is 3.1.81, so the overlay
-                  is drawn by lib/highlight.js and written into the file by the
-                  extension host.
-                -->
-                <button id="pdfTranslateHighlight" class="toolbarButton" title="Highlight selected text" role="radio" aria-checked="false" tabindex="36">
-                  <span>Highlight</span>
-                </button>
                 <input type="color" id="pdfTranslateHighlightColor" value="#ffd400" title="Highlight colour" tabindex="37" hidden>
+
+                <div id="editorModeButtons" class="splitToolbarButton toggled" role="radiogroup">
+                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Typewriter — click to place a text box" role="radio" aria-checked="false" tabindex="38">
+                    <span>Typewriter</span>
+                  </button>
+                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw freehand" role="radio" aria-checked="false" tabindex="39">
+                    <span>Draw</span>
+                  </button>
+                </div>
 
                 <div id="editorModeSeparator" class="verticalToolbarSeparator"></div>
                 <button id="secondaryToolbarToggle" class="toolbarButton" title="Tools" tabindex="48" data-l10n-id="tools" aria-expanded="false" aria-controls="secondaryToolbar">

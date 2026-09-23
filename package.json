@@ -262,6 +262,13 @@
           "type": "boolean",
           "default": true
         },
+        "pdf-translate.highlightColor": {
+          "markdownDescription": "Colour new highlights are drawn in, as `#rrggbb`. Yellow by default, which is what a highlighter is. The colour picker beside the Highlight button changes it for the current document only; this is the one it starts from.",
+          "type": "string",
+          "default": "#ffd400",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "patternErrorMessage": "Use a six-digit hex colour such as #ffd400."
+        },
         "pdf-translate.timeout": {
           "markdownDescription": "How long to wait for the translation backend, in milliseconds.",
           "type": "number",

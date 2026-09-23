@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Added a Foxit-style tool group to the toolbar — **Hand**, **Select**,
+  **Highlight**, **Typewriter**, **Draw** — with exactly one active at a time.
+  PDF.js keeps cursor tools and annotation editor modes in two unrelated
+  systems that can both be active at once, and buries Hand and Select in the
+  Tools menu; one place now decides which tool is active and tells whichever
+  system needs telling.
+- Fixed the highlight covering the text it highlighted. The overlay carried a
+  `z-index`, which turned it into a stacking context; a blended element only
+  blends with the backdrop inside its own stacking context, so `multiply` had
+  nothing to multiply against and painted flat opaque yellow over the page.
+  Removing the z-index restores the blend, and the overlay colour now also
+  carries alpha so the text stays readable even where blending does not apply.
+- Added `pdf-translate.highlightColor`, defaulting to yellow, as the colour new
+  highlights start from.
 - Added annotation editing: **Text** places a text box and **Draw** draws
   freehand, both PDF.js's own editors, which upstream ships but hides because a
   read-only viewer would lose anything drawn on close.
