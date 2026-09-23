@@ -114,8 +114,10 @@ the extension host writes real `/Highlight` annotations into the file when you
 save — the same kind Foxit and Adobe write, complete with QuadPoints, so they
 read them back.
 
-Click a highlight to remove it while it is still unsaved. Once written into the
-file it is a normal PDF annotation, and removing it needs a PDF editor.
+Click a highlight to remove it while it is still unsaved, or press `Ctrl+Z`.
+Once saved it is a normal PDF annotation: it stays on screen, but removing it
+needs a PDF editor, so it is left inert rather than offering a click that only
+half works.
 
 The colour picker beside the button changes the colour for the current
 document; `pdf-translate.highlightColor` sets what it starts from, and that is

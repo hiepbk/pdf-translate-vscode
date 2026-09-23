@@ -195,3 +195,81 @@ describe('applyHighlights', () => {
     assert.strictEqual((await annotationsOf(result, 0)).length, 2);
   });
 });
+
+describe('the appearance stream', () => {
+  /*
+   * Without one, a /Highlight is invisible in PDF.js: its annotation layer
+   * gives `.highlightAnnotation` a cursor and nothing else, because the colour
+   * is meant to come from the appearance. Adobe and Foxit synthesise one;
+   * PDF.js does not. Highlights looked like they vanished the moment they were
+   * saved, which read as the save having failed.
+   */
+  async function appearanceOf(bytes: Uint8Array): Promise<unknown> {
+    const doc = await PDFDocument.load(bytes);
+    const annots = doc
+      .getPage(0)
+      .node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    const annotation = annots.lookup(0);
+    const ap = annotation.get(PDFName.of('AP'));
+    return doc.context.lookup(ap.get(PDFName.of('N')));
+  }
+
+  it('gives every highlight one', async () => {
+    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    assert.ok(await appearanceOf(result), 'expected an /AP /N stream');
+  });
+
+  it('is a form XObject bounded by the highlight', async () => {
+    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const stream = (await appearanceOf(result)) as {
+      dict: { get(k: unknown): { toString(): string } | undefined };
+    };
+    assert.strictEqual(
+      stream.dict.get(PDFName.of('Subtype'))?.toString(),
+      '/Form'
+    );
+    const box = stream.dict.get(PDFName.of('BBox'))?.toString() || '';
+    assert.deepStrictEqual(
+      (box.match(/[-\d.]+/g) || []).map(Number),
+      [72, 697, 340, 715]
+    );
+  });
+
+  it('multiplies, so the text underneath stays readable', async () => {
+    // A plain fill would cover the words it is meant to mark.
+    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const stream = (await appearanceOf(result)) as {
+      dict: { toString(): string };
+    };
+    assert.match(stream.dict.toString(), /\/BM \/Multiply/);
+  });
+
+  it('declares a transparency group, or the blend has nothing to see', async () => {
+    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const stream = (await appearanceOf(result)) as {
+      dict: { toString(): string };
+    };
+    assert.match(stream.dict.toString(), /\/S \/Transparency/);
+  });
+
+  it('paints one rectangle per line', async () => {
+    const result = await applyHighlights(await blankPdf(), [
+      {
+        page: 0,
+        rects: [
+          [72, 697, 340, 715],
+          [72, 677, 345, 695],
+        ],
+        color: '#ffd400',
+      },
+    ]);
+    const stream = (await appearanceOf(result)) as { contents: Uint8Array };
+    const operators = Buffer.from(stream.contents).toString('latin1');
+    assert.strictEqual(
+      (operators.match(/ re$/gm) || []).length,
+      2,
+      'expected a rectangle for each line'
+    );
+    assert.match(operators, /\/GS gs/, 'the blend state must be selected');
+  });
+});

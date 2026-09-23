@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Fixed highlights vanishing the moment they were saved, which read as the
+  save having failed. Two causes. A `/Highlight` with no appearance stream is
+  invisible in PDF.js — its annotation layer gives `.highlightAnnotation` a
+  cursor and nothing else, because the colour is meant to come from the
+  appearance, and unlike Adobe and Foxit it does not synthesise one. Saved
+  highlights now carry an appearance stream that multiplies over the page, so
+  they render everywhere. And the overlay is no longer cleared at the save:
+  PDF.js is showing the document it loaded, not the file, so clearing it left
+  nothing on screen at all.
+- Fixed the reload flash after every save. The window that tells the file
+  watcher to ignore this extension's own write was consumed by the first event
+  it matched, but one write raises several on Windows, so the rest got through
+  and reloaded the document. The window now simply expires on time.
+- A highlight already written into the file is left inert: clicking it would
+  take the overlay away and leave the annotation behind.
+
 - Stopped the viewer swallowing `Ctrl+Shift+P`. A webview is a Chromium
   frame, and Chromium claims that combination for its system print dialog, so
   pressing it over a PDF opened a print dialog instead of VS Code's Command

@@ -137,6 +137,52 @@ export async function applyHighlights(
       M: PDFString.fromDate(new Date()),
     });
 
+    // Without an appearance stream a /Highlight is invisible in PDF.js — its
+    // annotation layer gives `.highlightAnnotation` a cursor and nothing else,
+    // because the colour is supposed to come from the appearance. Adobe and
+    // Foxit synthesise one; PDF.js does not, so it is built here. Multiply is
+    // what makes it read as a highlighter: the ink darkens the page instead of
+    // covering the text.
+    const box = boundingBox(highlight.rects);
+    const operators = ['/GS gs', `${r} ${g} ${b} rg`];
+    for (const rect of highlight.rects) {
+      const [x1, y1, x2, y2] = rect;
+      const left = Math.min(x1, x2);
+      const bottom = Math.min(y1, y2);
+      operators.push(
+        `${left} ${bottom} ${Math.abs(x2 - x1)} ${Math.abs(y2 - y1)} re`
+      );
+    }
+    operators.push('f');
+
+    const appearance = context.stream(operators.join('\n'), {
+      Type: PDFName.of('XObject'),
+      Subtype: PDFName.of('Form'),
+      BBox: box.map((n: number) => PDFNumber.of(n)),
+      // A transparency group is what lets the blend mode see the page behind
+      // the annotation rather than only the annotation's own blank backdrop.
+      Group: context.obj({
+        Type: PDFName.of('Group'),
+        S: PDFName.of('Transparency'),
+        CS: PDFName.of('DeviceRGB'),
+      }),
+      Resources: context.obj({
+        ExtGState: context.obj({
+          GS: context.obj({
+            Type: PDFName.of('ExtGState'),
+            BM: PDFName.of('Multiply'),
+            CA: PDFNumber.of(1),
+            ca: PDFNumber.of(1),
+          }),
+        }),
+      }),
+    });
+
+    annotation.set(
+      PDFName.of('AP'),
+      context.obj({ N: context.register(appearance) })
+    );
+
     const ref = context.register(annotation);
 
     // A page may have no /Annots at all, and when it does the array can be an

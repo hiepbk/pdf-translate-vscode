@@ -149,7 +149,7 @@ export class PdfPreview extends Disposable {
         // away the editor state — the open text box, the current tool — and
         // reload a file the webview already agrees with. Only a change made by
         // something else is worth reacting to.
-        if (this.consumeSelfWrite()) {
+        if (this.isEchoOfSelfWrite()) {
           return;
         }
         this.reload();
@@ -292,7 +292,14 @@ export class PdfPreview extends Disposable {
    */
   public async getSaveableBytes(): Promise<Uint8Array> {
     const fromPdfJs = await this.getAnnotatedPdf();
-    return applyHighlights(fromPdfJs, this._highlights);
+    try {
+      return await applyHighlights(fromPdfJs, this._highlights);
+    } catch (error) {
+      // Failing here loses the whole save, text boxes included, so say which
+      // half went wrong rather than leaving a bare pdf-lib parse error.
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`The highlights could not be written: ${detail}`);
+    }
   }
 
   /** Tell the webview the file on disk now matches what it holds. */
@@ -312,12 +319,17 @@ export class PdfPreview extends Disposable {
     this._selfWriteUntil = Date.now() + SELF_WRITE_GRACE_MS;
   }
 
-  private consumeSelfWrite(): boolean {
-    if (Date.now() > this._selfWriteUntil) {
-      return false;
-    }
-    this._selfWriteUntil = 0;
-    return true;
+  /**
+   * Whether the watcher's change event is an echo of our own write.
+   *
+   * The window is not consumed by the first event it matches. One write
+   * produces several filesystem events on Windows — a create and one or more
+   * changes — and consuming the window on the first let the rest through, so
+   * every save ended in a visible reload flash. Letting the window expire on
+   * time instead covers the whole burst.
+   */
+  private isEchoOfSelfWrite(): boolean {
+    return Date.now() <= this._selfWriteUntil;
   }
 
   /** Throw away unsaved annotations by reloading the file from disk. */

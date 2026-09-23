@@ -112,6 +112,8 @@ interface Harness {
     key: string,
     modifiers?: Record<string, boolean>
   ): { prevented: boolean; stopped: boolean };
+  /** Deliver a message from the extension host. */
+  hostMessage(type: string): void;
 }
 
 async function run(): Promise<Harness> {
@@ -325,6 +327,11 @@ async function run(): Promise<Harness> {
       );
     },
     pdfjsUndoCount: (): number => pdfjsUndos,
+    hostMessage: (type): void => {
+      (windowListeners['message'] || []).forEach((fn) =>
+        fn({ data: { type } })
+      );
+    },
     pressAndWatch: (key, modifiers = {}) => {
       const seen = { prevented: false, stopped: false };
       const target = makeElement();
@@ -620,5 +627,51 @@ describe('printing', () => {
     const seen = harness.pressAndWatch('b');
     assert.strictEqual(seen.prevented, false);
     assert.strictEqual(seen.stopped, false);
+  });
+});
+
+describe('saving', () => {
+  const LINE = [{ left: 172, top: 150, right: 440, bottom: 168 }];
+  const OTHER = [{ left: 172, top: 250, right: 400, bottom: 268 }];
+
+  async function savedOneHighlight(): Promise<Harness> {
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'first');
+    harness.hostMessage('saved');
+    return harness;
+  }
+
+  it('stops offering a highlight once it is in the file', async () => {
+    // Sending it again would write a second copy on the next save.
+    const harness = await savedOneHighlight();
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('offers only the new highlight after a save', async () => {
+    const harness = await savedOneHighlight();
+    harness.selectText(OTHER, 'second');
+    const highlights = harness.currentHighlights() as Array<{
+      rects: number[][];
+    }>;
+    assert.strictEqual(highlights.length, 1, 'the saved one must not return');
+    // Page-relative (72, 200)-(300, 218), flipped into PDF space on an
+    // 842-high page: 842 - 218 = 624 at the bottom, 842 - 200 = 642 at the top.
+    assert.deepStrictEqual(highlights[0].rects, [[72, 624, 300, 642]]);
+  });
+
+  it('will not undo a highlight that is already written', async () => {
+    // Undo would take the overlay away and leave the annotation in the file,
+    // so the history is dropped at the save instead.
+    const harness = await savedOneHighlight();
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('still undoes a highlight made after the save', async () => {
+    const harness = await savedOneHighlight();
+    harness.selectText(OTHER, 'second');
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
   });
 });
