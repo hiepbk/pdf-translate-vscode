@@ -7,7 +7,7 @@ import {
   LANGUAGES,
   targetLanguagesFor,
 } from './translate/languages';
-import { applyHighlights, Highlight } from './annotate/highlights';
+import { applyEdits, Highlight } from './annotate/edits';
 import { MissingApiKeyError } from './translate/provider';
 import {
   describeError,
@@ -46,6 +46,8 @@ export class PdfPreview extends Disposable {
   private _selfWriteUntil = 0;
   /** Highlights drawn but not yet written into the file. */
   private _highlights: Highlight[] = [];
+  /** Annotations the user erased, to be removed from the file on save. */
+  private _deletedAnnotationIds: string[] = [];
 
   constructor(
     private readonly extensionRoot: vscode.Uri,
@@ -106,6 +108,12 @@ export class PdfPreview extends Disposable {
           }
           case 'annotated-pdf': {
             this.receiveAnnotatedPdf(message);
+            break;
+          }
+          case 'deleted-annotations': {
+            // The webview hides them immediately; the file only loses them when
+            // the document is saved, so an unsaved erase is still reversible.
+            this._deletedAnnotationIds = message.ids || [];
             break;
           }
           case 'highlights': {
@@ -293,12 +301,15 @@ export class PdfPreview extends Disposable {
   public async getSaveableBytes(): Promise<Uint8Array> {
     const fromPdfJs = await this.getAnnotatedPdf();
     try {
-      return await applyHighlights(fromPdfJs, this._highlights);
+      return await applyEdits(fromPdfJs, {
+        highlights: this._highlights,
+        deletedAnnotationIds: this._deletedAnnotationIds,
+      });
     } catch (error) {
       // Failing here loses the whole save, text boxes included, so say which
-      // half went wrong rather than leaving a bare pdf-lib parse error.
+      // part went wrong rather than leaving a bare pdf-lib parse error.
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`The highlights could not be written: ${detail}`);
+      throw new Error(`The annotation edits could not be written: ${detail}`);
     }
   }
 
@@ -475,6 +486,7 @@ export class PdfPreview extends Disposable {
 <script src="${resolveAsUri('lib', 'toolbar.js')}"></script>
 <script src="${resolveAsUri('lib', 'undo.js')}"></script>
 <script src="${resolveAsUri('lib', 'noPrint.js')}"></script>
+<script src="${resolveAsUri('lib', 'erase.js')}"></script>
 </head>`;
 
     const body = `<body tabindex="1">
@@ -752,6 +764,9 @@ export class PdfPreview extends Disposable {
                   </button>
                   <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw freehand" role="radio" aria-checked="false" tabindex="39">
                     <span>Draw</span>
+                  </button>
+                  <button id="pdfTranslateErase" class="toolbarButton" title="Erase — click a highlight, text box or drawing to remove it" role="radio" aria-checked="false" tabindex="40">
+                    <span>Erase</span>
                   </button>
                 </div>
 

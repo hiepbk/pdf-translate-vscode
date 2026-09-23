@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Added an **Erase** tool. Click any annotation already in the file — a
+  highlight, a text box, a drawing, made in this session or found there on
+  opening — and it goes; `Ctrl+Z` brings it back, and the file only loses it
+  on save.
+
+  PDF.js 3.1.81 cannot delete an annotation: its editors only create, and it
+  paints annotations into the page canvas, so hiding the element in the
+  annotation layer changes nothing. What makes it work is that the worker asks
+  `mustBeViewed(annotationStorage)` before drawing each annotation and honours
+  a `hidden` flag found there. The viewer now runs in `ENABLE_STORAGE` mode,
+  without which the storage never reaches the worker and the flag would be
+  ignored. The reference is then struck from the file on save.
+
+  Hit-testing is on geometry rather than on the annotation layer's elements,
+  because those exist only for annotations PDF.js considers renderable — a
+  highlight with no contents has no element, and would be un-erasable if the
+  DOM were the only route to it.
+- Adding and deleting now share one pdf-lib load and save rather than two; a
+  paper is several megabytes and doing it twice showed.
+
 - Fixed highlights vanishing the moment they were saved, which read as the
   save having failed. Two causes. A `/Highlight` with no appearance stream is
   invisible in PDF.js — its annotation layer gives `.highlightAnnotation` a

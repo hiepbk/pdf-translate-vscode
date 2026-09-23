@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { applyHighlights, Highlight } from '../annotate/highlights';
+import { applyEdits, Highlight } from '../annotate/edits';
 
 /*
  * These build a real PDF, highlight it, and read the result back the way any
@@ -53,16 +53,18 @@ const oneLine: Highlight = {
   text: 'a highlighted phrase',
 };
 
-describe('applyHighlights', () => {
+describe('applying highlights', () => {
   it('returns the document untouched when there is nothing to add', async () => {
     const original = await blankPdf();
-    const result = await applyHighlights(original, []);
+    const result = await applyEdits(original, { highlights: [] });
     // Identity, not merely equality: nothing should be re-serialised.
     assert.strictEqual(result, original);
   });
 
   it('writes a Highlight annotation', async () => {
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     const annots = await annotationsOf(result);
     assert.strictEqual(annots.length, 1);
     assert.strictEqual(annots[0].Subtype, '/Highlight');
@@ -72,7 +74,9 @@ describe('applyHighlights', () => {
     // The specification says counter-clockwise from the lower left, but every
     // real producer writes upper-left, upper-right, lower-left, lower-right,
     // and readers follow the producers. The other order draws a bow tie.
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     const quads = (await annotationsOf(result))[0].QuadPoints;
     const numbers = (quads.match(/[-\d.]+/g) || []).map(Number);
     assert.deepStrictEqual(
@@ -83,16 +87,18 @@ describe('applyHighlights', () => {
   });
 
   it('spans every line of a multi-line selection', async () => {
-    const result = await applyHighlights(await blankPdf(), [
-      {
-        page: 0,
-        rects: [
-          [72, 697, 340, 715],
-          [72, 677, 345, 695],
-        ],
-        color: '#ffd400',
-      },
-    ]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [
+        {
+          page: 0,
+          rects: [
+            [72, 697, 340, 715],
+            [72, 677, 345, 695],
+          ],
+          color: '#ffd400',
+        },
+      ],
+    });
     const annots = await annotationsOf(result);
     const numbers = (annots[0].QuadPoints.match(/[-\d.]+/g) || []).map(Number);
     // Eight numbers per quad, one quad per line.
@@ -102,16 +108,18 @@ describe('applyHighlights', () => {
   });
 
   it('bounds the rectangle around every line', async () => {
-    const result = await applyHighlights(await blankPdf(), [
-      {
-        page: 0,
-        rects: [
-          [72, 697, 340, 715],
-          [72, 677, 345, 695],
-        ],
-        color: '#ffd400',
-      },
-    ]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [
+        {
+          page: 0,
+          rects: [
+            [72, 697, 340, 715],
+            [72, 677, 345, 695],
+          ],
+          color: '#ffd400',
+        },
+      ],
+    });
     const rect = (await annotationsOf(result))[0].Rect;
     const numbers = (rect.match(/[-\d.]+/g) || []).map(Number);
     assert.deepStrictEqual(numbers, [72, 677, 345, 715]);
@@ -120,23 +128,25 @@ describe('applyHighlights', () => {
   it('marks the annotation printable', async () => {
     // Without the Print flag the highlight is on screen but absent from
     // anything printed or exported.
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     assert.strictEqual((await annotationsOf(result))[0].F, '4');
   });
 
   it('writes the colour as PDF components', async () => {
-    const result = await applyHighlights(await blankPdf(), [
-      { page: 0, rects: [[0, 0, 10, 10]], color: '#ff0000' },
-    ]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [{ page: 0, rects: [[0, 0, 10, 10]], color: '#ff0000' }],
+    });
     const colour = (await annotationsOf(result))[0].C;
     const numbers = (colour.match(/[-\d.]+/g) || []).map(Number);
     assert.deepStrictEqual(numbers, [1, 0, 0]);
   });
 
   it('falls back to yellow rather than losing an unreadable colour', async () => {
-    const result = await applyHighlights(await blankPdf(), [
-      { page: 0, rects: [[0, 0, 10, 10]], color: 'not-a-colour' },
-    ]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [{ page: 0, rects: [[0, 0, 10, 10]], color: 'not-a-colour' }],
+    });
     const annots = await annotationsOf(result);
     assert.strictEqual(annots.length, 1, 'the highlight must survive');
     const numbers = (annots[0].C.match(/[-\d.]+/g) || []).map(Number);
@@ -145,10 +155,12 @@ describe('applyHighlights', () => {
   });
 
   it('puts each highlight on its own page', async () => {
-    const result = await applyHighlights(await blankPdf(3), [
-      { page: 0, rects: [[0, 0, 10, 10]], color: '#ffd400' },
-      { page: 2, rects: [[0, 0, 10, 10]], color: '#ffd400' },
-    ]);
+    const result = await applyEdits(await blankPdf(3), {
+      highlights: [
+        { page: 0, rects: [[0, 0, 10, 10]], color: '#ffd400' },
+        { page: 2, rects: [[0, 0, 10, 10]], color: '#ffd400' },
+      ],
+    });
     assert.strictEqual((await annotationsOf(result, 0)).length, 1);
     assert.strictEqual((await annotationsOf(result, 1)).length, 0);
     assert.strictEqual((await annotationsOf(result, 2)).length, 1);
@@ -157,9 +169,9 @@ describe('applyHighlights', () => {
   it('ignores a highlight for a page that does not exist', async () => {
     // Stale coordinates from a document that was reloaded should not throw and
     // lose the save along with them.
-    const result = await applyHighlights(await blankPdf(1), [
-      { page: 7, rects: [[0, 0, 10, 10]], color: '#ffd400' },
-    ]);
+    const result = await applyEdits(await blankPdf(1), {
+      highlights: [{ page: 7, rects: [[0, 0, 10, 10]], color: '#ffd400' }],
+    });
     assert.strictEqual((await annotationsOf(result)).length, 0);
   });
 
@@ -181,17 +193,21 @@ describe('applyHighlights', () => {
       ])
     );
 
-    const result = await applyHighlights(await doc.save(), [oneLine]);
+    const result = await applyEdits(await doc.save(), {
+      highlights: [oneLine],
+    });
     const annots = await annotationsOf(result);
     const subtypes = annots.map((a) => a.Subtype).sort();
     assert.deepStrictEqual(subtypes, ['/Highlight', '/Link']);
   });
 
   it('adds highlights to a page that has none without disturbing others', async () => {
-    const result = await applyHighlights(await blankPdf(2), [
-      oneLine,
-      { page: 0, rects: [[10, 10, 20, 20]], color: '#00ff00' },
-    ]);
+    const result = await applyEdits(await blankPdf(2), {
+      highlights: [
+        oneLine,
+        { page: 0, rects: [[10, 10, 20, 20]], color: '#00ff00' },
+      ],
+    });
     assert.strictEqual((await annotationsOf(result, 0)).length, 2);
   });
 });
@@ -215,12 +231,16 @@ describe('the appearance stream', () => {
   }
 
   it('gives every highlight one', async () => {
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     assert.ok(await appearanceOf(result), 'expected an /AP /N stream');
   });
 
   it('is a form XObject bounded by the highlight', async () => {
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     const stream = (await appearanceOf(result)) as {
       dict: { get(k: unknown): { toString(): string } | undefined };
     };
@@ -237,7 +257,9 @@ describe('the appearance stream', () => {
 
   it('multiplies, so the text underneath stays readable', async () => {
     // A plain fill would cover the words it is meant to mark.
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     const stream = (await appearanceOf(result)) as {
       dict: { toString(): string };
     };
@@ -245,7 +267,9 @@ describe('the appearance stream', () => {
   });
 
   it('declares a transparency group, or the blend has nothing to see', async () => {
-    const result = await applyHighlights(await blankPdf(), [oneLine]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [oneLine],
+    });
     const stream = (await appearanceOf(result)) as {
       dict: { toString(): string };
     };
@@ -253,16 +277,18 @@ describe('the appearance stream', () => {
   });
 
   it('paints one rectangle per line', async () => {
-    const result = await applyHighlights(await blankPdf(), [
-      {
-        page: 0,
-        rects: [
-          [72, 697, 340, 715],
-          [72, 677, 345, 695],
-        ],
-        color: '#ffd400',
-      },
-    ]);
+    const result = await applyEdits(await blankPdf(), {
+      highlights: [
+        {
+          page: 0,
+          rects: [
+            [72, 697, 340, 715],
+            [72, 677, 345, 695],
+          ],
+          color: '#ffd400',
+        },
+      ],
+    });
     const stream = (await appearanceOf(result)) as { contents: Uint8Array };
     const operators = Buffer.from(stream.contents).toString('latin1');
     assert.strictEqual(
@@ -271,5 +297,101 @@ describe('the appearance stream', () => {
       'expected a rectangle for each line'
     );
     assert.match(operators, /\/GS gs/, 'the blend state must be selected');
+  });
+});
+
+describe('deleting annotations', () => {
+  /*
+   * PDF.js 3.1.81 cannot delete an annotation that was already in the file —
+   * its editors only ever create — so the Erase tool hides the annotation in
+   * the viewer and the reference is struck from the file here. The reference
+   * is what identifies it: two identical highlights on a page are distinct
+   * annotations, and deleting one must not take the other with it.
+   */
+  async function pdfWithAnnotations(
+    count: number
+  ): Promise<{ bytes: Uint8Array; ids: string[] }> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    const refs = [];
+    for (let i = 0; i < count; i++) {
+      refs.push(
+        doc.context.register(
+          doc.context.obj({
+            Type: PDFName.of('Annot'),
+            Subtype: PDFName.of('Square'),
+            Rect: [i * 10, 0, i * 10 + 5, 5],
+          })
+        )
+      );
+    }
+    page.node.set(PDFName.of('Annots'), doc.context.obj(refs));
+    return {
+      bytes: await doc.save(),
+      // PDF.js names an annotation after its reference: "<num>R".
+      ids: refs.map((ref) => `${ref.objectNumber}R`),
+    };
+  }
+
+  it('removes the annotation it was asked to', async () => {
+    const { bytes, ids } = await pdfWithAnnotations(3);
+    const result = await applyEdits(bytes, {
+      deletedAnnotationIds: [ids[1]],
+    });
+    assert.strictEqual((await annotationsOf(result)).length, 2);
+  });
+
+  it('leaves the others in place', async () => {
+    const { bytes, ids } = await pdfWithAnnotations(3);
+    const result = await applyEdits(bytes, {
+      deletedAnnotationIds: [ids[0]],
+    });
+    const rects = (await annotationsOf(result)).map((a) => a.Rect);
+    // The first was at x=0; the two that remain start at 10 and 20.
+    assert.ok(!rects.some((r) => /\[ 0 0 5 5 \]/.test(r)));
+    assert.strictEqual(rects.length, 2);
+  });
+
+  it('removes several at once', async () => {
+    const { bytes, ids } = await pdfWithAnnotations(4);
+    const result = await applyEdits(bytes, {
+      deletedAnnotationIds: [ids[0], ids[2], ids[3]],
+    });
+    assert.strictEqual((await annotationsOf(result)).length, 1);
+  });
+
+  it('ignores an id that is not on the page', async () => {
+    // A stale id from a reloaded document must not throw and lose the save.
+    const { bytes } = await pdfWithAnnotations(2);
+    const result = await applyEdits(bytes, {
+      deletedAnnotationIds: ['99999R'],
+    });
+    assert.strictEqual((await annotationsOf(result)).length, 2);
+  });
+
+  it('ignores an id it cannot parse', async () => {
+    const { bytes } = await pdfWithAnnotations(2);
+    const result = await applyEdits(bytes, {
+      deletedAnnotationIds: ['not-an-id', ''],
+    });
+    assert.strictEqual((await annotationsOf(result)).length, 2);
+  });
+
+  it('adds and deletes in a single pass', async () => {
+    const { bytes, ids } = await pdfWithAnnotations(2);
+    const result = await applyEdits(bytes, {
+      highlights: [oneLine],
+      deletedAnnotationIds: [ids[0]],
+    });
+    const annots = await annotationsOf(result);
+    assert.strictEqual(annots.length, 2, 'one removed, one added');
+    assert.ok(annots.some((a) => a.Subtype === '/Highlight'));
+    assert.ok(annots.some((a) => a.Subtype === '/Square'));
+  });
+
+  it('returns the document untouched when nothing is deleted', async () => {
+    const { bytes } = await pdfWithAnnotations(1);
+    const result = await applyEdits(bytes, { deletedAnnotationIds: [] });
+    assert.strictEqual(result, bytes);
   });
 });

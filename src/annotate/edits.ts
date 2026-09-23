@@ -1,14 +1,15 @@
 /*
- * Writing highlight annotations into a PDF.
+ * The edits a save applies to a PDF that PDF.js cannot make itself.
  *
- * The bundled PDF.js is 3.1.81, whose `saveNewAnnotations` understands only
- * FreeText and Ink — the highlight editor arrived in 4.3. So highlights cannot
- * travel out through PDF.js's own save path, and are written here instead,
- * after PDF.js has produced the file containing everything it does handle.
+ * The bundled PDF.js is 3.1.81. Its `saveNewAnnotations` understands only
+ * FreeText and Ink — the highlight editor arrived in 4.3 — and it cannot
+ * delete an annotation that was already in the file at all. So highlights are
+ * added and annotations removed here, in one pass, after PDF.js has produced
+ * the file containing everything it does handle.
  *
- * The result is a real `/Highlight` annotation with QuadPoints, so Foxit,
- * Adobe, Preview and PDF.js itself all show it, and it travels with the
- * document rather than living in a sidecar file.
+ * Highlights come out as real `/Highlight` annotations with QuadPoints and an
+ * appearance stream, so Foxit, Adobe, Preview and PDF.js itself all show them,
+ * and they travel inside the document rather than in a sidecar file.
  */
 
 /** A highlight as the webview measured it, in PDF user-space coordinates. */
@@ -26,10 +27,35 @@ export interface Highlight {
   text?: string;
 }
 
+/** Everything a save has to apply to the file in one pass. */
+export interface AnnotationEdits {
+  /** Highlights to add. */
+  highlights?: readonly Highlight[];
+  /**
+   * Annotations to remove, by PDF.js's id for them — `"12R"` or `"12R3"`,
+   * which is the object's reference written out. That is the only handle the
+   * webview has on an annotation that was already in the file, and it maps
+   * straight onto a pdf-lib reference.
+   */
+  deletedAnnotationIds?: readonly string[];
+}
+
 interface Rgb {
   r: number;
   g: number;
   b: number;
+}
+
+/** Object and generation numbers from PDF.js's `"<num>R<gen>"` id. */
+function parseAnnotationId(id: string): { num: number; gen: number } | null {
+  const match = /^(\d+)R(\d*)$/.exec(String(id).trim());
+  if (!match) {
+    return null;
+  }
+  return {
+    num: parseInt(match[1], 10),
+    gen: match[2] ? parseInt(match[2], 10) : 0,
+  };
 }
 
 function parseColor(color: string): Rgb {
@@ -78,17 +104,22 @@ function quadPoints(rect: [number, number, number, number]): number[] {
 }
 
 /**
- * Add the highlights to `pdfBytes` and return the new document.
+ * Apply the edits to `pdfBytes` and return the new document.
+ *
+ * Deletions run before additions so that a highlight added and removed in the
+ * same session cannot be resurrected by the ordering, and both share one load
+ * and one save — a paper is several megabytes, and doing it twice would show.
  *
  * pdf-lib is loaded here rather than at module scope so that opening a PDF
- * never pays for it: it is only needed when a document with highlights is
- * saved.
+ * never pays for it: it is only needed when an edited document is saved.
  */
-export async function applyHighlights(
+export async function applyEdits(
   pdfBytes: Uint8Array,
-  highlights: readonly Highlight[]
+  edits: AnnotationEdits
 ): Promise<Uint8Array> {
-  if (highlights.length === 0) {
+  const highlights = edits.highlights || [];
+  const deleted = edits.deletedAnnotationIds || [];
+  if (highlights.length === 0 && deleted.length === 0) {
     return pdfBytes;
   }
 
@@ -109,6 +140,8 @@ export async function applyHighlights(
   const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
   const context = pdfDoc.context;
+
+  removeAnnotations(pages, deleted, PDFName, PDFArray);
 
   for (const highlight of highlights) {
     const page = pages[highlight.page];
@@ -201,4 +234,65 @@ export async function applyHighlights(
   }
 
   return pdfDoc.save({ useObjectStreams: false });
+}
+
+/**
+ * Drop the named annotations from every page that carries them.
+ *
+ * The reference is matched rather than the object's contents, because two
+ * identical highlights on a page are distinct annotations and deleting one
+ * must not take the other with it. Entries that are not references — a page
+ * may inline an annotation dictionary — are left alone, since there is no
+ * reference to match them by.
+ */
+interface AnnotsArray {
+  size(): number;
+  get(index: number): { objectNumber?: number; generationNumber?: number };
+  remove(index: number): void;
+}
+
+interface PdfLibPage {
+  node: {
+    lookupMaybe(key: unknown, type: unknown): AnnotsArray | undefined;
+  };
+}
+
+function removeAnnotations(
+  pages: PdfLibPage[],
+  ids: readonly string[],
+  PDFName: { of(name: string): unknown },
+  PDFArray: unknown
+): void {
+  if (ids.length === 0) {
+    return;
+  }
+
+  const wanted = new Set<string>();
+  for (const id of ids) {
+    const ref = parseAnnotationId(id);
+    if (ref) {
+      wanted.add(`${ref.num}:${ref.gen}`);
+    }
+  }
+  if (wanted.size === 0) {
+    return;
+  }
+
+  for (const page of pages) {
+    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) {
+      continue;
+    }
+    // Backwards, so removing one does not shift the indices still to check.
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      const entry = annots.get(i);
+      if (!entry || typeof entry.objectNumber !== 'number') {
+        continue;
+      }
+      const key = `${entry.objectNumber}:${entry.generationNumber || 0}`;
+      if (wanted.has(key)) {
+        annots.remove(i);
+      }
+    }
+  }
 }

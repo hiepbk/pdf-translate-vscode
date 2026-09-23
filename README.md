@@ -85,6 +85,7 @@ releases the others:
 | **Highlight** | Select text to mark it, yellow |
 | **Typewriter** | Click to place a text box and type |
 | **Draw** | Freehand pen |
+| **Erase** | Click any annotation to remove it |
 
 Typewriter and Draw are PDF.js's own editors, which upstream ships but hides
 because its viewer cannot save and anything drawn would be lost on close.
@@ -115,9 +116,25 @@ save — the same kind Foxit and Adobe write, complete with QuadPoints, so they
 read them back.
 
 Click a highlight to remove it while it is still unsaved, or press `Ctrl+Z`.
-Once saved it is a normal PDF annotation: it stays on screen, but removing it
-needs a PDF editor, so it is left inert rather than offering a click that only
-half works.
+
+### Erasing
+
+**Erase** removes anything already in the file — highlights, text boxes,
+drawings — whether they were made in this session or found there when the
+document was opened. Click one and it goes; `Ctrl+Z` brings it back.
+
+The annotation is only struck from the file when the document is saved, so an
+erase is reversible until then. PDF.js 3.1.81 cannot delete an annotation at
+all — its editors only create — and it paints annotations into the page canvas,
+so hiding the element would change nothing. What makes this work is that the
+worker asks `mustBeViewed(annotationStorage)` before drawing each one, and that
+consults the storage for a `hidden` flag; the viewer runs in `ENABLE_STORAGE`
+mode so the flag reaches it.
+
+A text box or drawing that has not been saved yet belongs to PDF.js's editor,
+and is removed the way that editor does it: pick **Typewriter** or **Draw**,
+click the annotation, press `Delete`. Once saved, **Erase** takes it like
+anything else.
 
 The colour picker beside the button changes the colour for the current
 document; `pdf-translate.highlightColor` sets what it starts from, and that is
