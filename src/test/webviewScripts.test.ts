@@ -98,13 +98,41 @@ interface Harness {
   click(id: string): void;
   selectText(rects: Array<Record<string, number>>, text: string): void;
   isActive(): boolean;
+  /** The highlights the webview last told the host about. */
+  currentHighlights(): unknown[];
+  press(key: string, modifiers?: Record<string, boolean>): void;
+  /** Press Ctrl+Z as though the caret were inside a text box. */
+  pressInTextBox(key: string): void;
+  /** Pretend PDF.js reported an editor edit. */
+  editorEdit(): void;
+  /** How many times PDF.js's own undo() was called. */
+  pdfjsUndoCount(): number;
 }
 
-function run(): Harness {
+async function run(): Promise<Harness> {
   const posted: Array<Record<string, unknown>> = [];
   const byId: Record<string, Record<string, unknown>> = {};
   const documentListeners: Record<string, Array<(e: unknown) => void>> = {};
   const windowListeners: Record<string, Array<(e: unknown) => void>> = {};
+  const busHandlers: Record<string, Array<(e: unknown) => void>> = {};
+
+  // Stands in for PDF.js's AnnotationEditorUIManager, which the real code only
+  // ever reaches as the `source` of its state event.
+  let pdfjsUndos = 0;
+  const uiManager = {
+    undo: (): void => {
+      pdfjsUndos++;
+      // PDF.js re-announces its state after an undo, which is how the
+      // coordinator learns there is nothing left to take back.
+      (busHandlers['annotationeditorstateschanged'] || []).forEach((fn) =>
+        fn({
+          source: uiManager,
+          details: { hasSomethingToUndo: false, hasSomethingToRedo: true },
+        })
+      );
+    },
+    redo: (): void => undefined,
+  };
 
   // A page sitting at (100, 50) on screen, 595x842, rendered at 1:1.
   const pageBox = { left: 100, top: 50, right: 695, bottom: 892 };
@@ -169,8 +197,12 @@ function run(): Harness {
       pdfCursorTools: { activeTool: 0, switchTool: (): void => undefined },
       pdfViewer: { getPageView: (): unknown => pageView },
       eventBus: {
-        on: (): void => undefined,
-        dispatch: (): void => undefined,
+        on: (type: string, fn: (e: unknown) => void): void => {
+          (busHandlers[type] = busHandlers[type] || []).push(fn);
+        },
+        dispatch: (type: string, event: unknown): void => {
+          (busHandlers[type] || []).forEach((fn) => fn(event));
+        },
       },
     },
   };
@@ -195,13 +227,19 @@ function run(): Harness {
   };
   vm.createContext(sandbox);
 
-  ['highlight.js', 'toolbar.js'].forEach((name) => {
+  ['highlight.js', 'toolbar.js', 'undo.js'].forEach((name) => {
     vm.runInContext(fs.readFileSync(path.join(LIB, name), 'utf8'), sandbox, {
       filename: name,
     });
   });
 
   (documentListeners['DOMContentLoaded'] || []).forEach((fn) => fn({}));
+
+  // Each script finishes wiring itself inside initializedPromise.then(), which
+  // is a microtask. Without draining it here the event-bus handlers are not
+  // registered yet, and every test that fires a PDF.js event would pass for
+  // the wrong reason — by doing nothing at all.
+  await new Promise((resolve) => setImmediate(resolve));
 
   return {
     posted,
@@ -232,29 +270,79 @@ function run(): Harness {
       const api = win.__pdfTranslateHighlight as { isActive(): boolean };
       return api.isActive();
     },
+    currentHighlights: (): unknown[] => {
+      const messages = posted.filter((m) => m.type === 'highlights');
+      if (messages.length === 0) {
+        return [];
+      }
+      return messages[messages.length - 1].highlights as unknown[];
+    },
+    press: (key, modifiers = {}): void => {
+      const target = makeElement();
+      target.closest = (): null => null;
+      (windowListeners['keydown'] || []).forEach((fn) =>
+        fn({
+          key,
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          target,
+          preventDefault: (): void => undefined,
+          stopPropagation: (): void => undefined,
+          ...modifiers,
+        })
+      );
+    },
+    pressInTextBox: (key): void => {
+      const target = makeElement();
+      // A contenteditable ancestor: PDF.js's text boxes are exactly this.
+      target.closest = (): unknown => makeElement();
+      (windowListeners['keydown'] || []).forEach((fn) =>
+        fn({
+          key,
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          target,
+          preventDefault: (): void => undefined,
+          stopPropagation: (): void => undefined,
+        })
+      );
+    },
+    editorEdit: (): void => {
+      (busHandlers['annotationeditorstateschanged'] || []).forEach((fn) =>
+        fn({
+          source: uiManager,
+          details: { hasSomethingToUndo: true, hasSomethingToRedo: false },
+        })
+      );
+    },
+    pdfjsUndoCount: (): number => pdfjsUndos,
   };
 }
 
 describe('highlighting, wired end to end', () => {
-  it('exposes its API to the toolbar', () => {
+  it('exposes its API to the toolbar', async () => {
     // If highlight.js fails to parse or throw during setup, the toolbar button
     // has nothing to call and highlighting silently does nothing.
-    assert.strictEqual(typeof run().isActive, 'function');
+    assert.strictEqual(typeof (await run()).isActive, 'function');
   });
 
-  it('is off until the toolbar turns it on', () => {
-    const harness = run();
+  it('is off until the toolbar turns it on', async () => {
+    const harness = await run();
     assert.strictEqual(harness.isActive(), false);
   });
 
-  it('turns on when the Highlight button is clicked', () => {
-    const harness = run();
+  it('turns on when the Highlight button is clicked', async () => {
+    const harness = await run();
     harness.click('pdfTranslateHighlight');
     assert.strictEqual(harness.isActive(), true);
   });
 
-  it('ignores a selection while another tool is active', () => {
-    const harness = run();
+  it('ignores a selection while another tool is active', async () => {
+    const harness = await run();
     harness.selectText(
       [{ left: 172, top: 150, right: 300, bottom: 168 }],
       'some text'
@@ -265,8 +353,8 @@ describe('highlighting, wired end to end', () => {
     );
   });
 
-  it('produces a highlight in PDF coordinates from a selection', () => {
-    const harness = run();
+  it('produces a highlight in PDF coordinates from a selection', async () => {
+    const harness = await run();
     harness.click('pdfTranslateHighlight');
     harness.selectText(
       [{ left: 172, top: 150, right: 440, bottom: 168 }],
@@ -288,10 +376,10 @@ describe('highlighting, wired end to end', () => {
     assert.strictEqual(highlights[0].color, '#ffd400');
   });
 
-  it('merges the fragments of one line into a single bar', () => {
+  it('merges the fragments of one line into a single bar', async () => {
     // A selection returns one rectangle per text span. Left alone they render
     // as adjacent boxes with visible seams, and bloat the saved annotation.
-    const harness = run();
+    const harness = await run();
     harness.click('pdfTranslateHighlight');
     harness.selectText(
       [
@@ -307,8 +395,8 @@ describe('highlighting, wired end to end', () => {
     assert.deepStrictEqual(highlights[0].rects, [[72, 724, 340, 742]]);
   });
 
-  it('keeps separate lines separate', () => {
-    const harness = run();
+  it('keeps separate lines separate', async () => {
+    const harness = await run();
     harness.click('pdfTranslateHighlight');
     harness.selectText(
       [
@@ -323,13 +411,142 @@ describe('highlighting, wired end to end', () => {
     assert.strictEqual(highlights[0].rects.length, 2);
   });
 
-  it('marks the document edited so Ctrl+S has something to save', () => {
-    const harness = run();
+  it('marks the document edited so Ctrl+S has something to save', async () => {
+    const harness = await run();
     harness.click('pdfTranslateHighlight');
     harness.selectText(
       [{ left: 172, top: 150, right: 440, bottom: 168 }],
       'text'
     );
     assert.ok(harness.posted.some((m) => m.type === 'edited'));
+  });
+});
+
+describe('Ctrl+Z', () => {
+  const LINE = [{ left: 172, top: 150, right: 440, bottom: 168 }];
+  const SECOND_LINE = [{ left: 172, top: 200, right: 400, bottom: 218 }];
+
+  async function withOneHighlight(): Promise<Harness> {
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'first');
+    return harness;
+  }
+
+  it('takes back a highlight', async () => {
+    const harness = await withOneHighlight();
+    assert.strictEqual(harness.currentHighlights().length, 1);
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('takes back one selection at a time, newest first', async () => {
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'first');
+    harness.selectText(SECOND_LINE, 'second');
+    assert.strictEqual(harness.currentHighlights().length, 2);
+
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 1);
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('does nothing once there is nothing left to take back', async () => {
+    const harness = await withOneHighlight();
+    harness.press('z');
+    harness.press('z');
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('puts a highlight back with Ctrl+Y', async () => {
+    const harness = await withOneHighlight();
+    harness.press('z');
+    harness.press('y');
+    assert.strictEqual(harness.currentHighlights().length, 1);
+  });
+
+  it('puts a highlight back with Ctrl+Shift+Z', async () => {
+    const harness = await withOneHighlight();
+    harness.press('z');
+    harness.press('z', { shiftKey: true });
+    assert.strictEqual(harness.currentHighlights().length, 1);
+  });
+
+  it('abandons the redo branch after a new edit', async () => {
+    const harness = await withOneHighlight();
+    harness.press('z');
+    harness.selectText(SECOND_LINE, 'second');
+    harness.press('y');
+    // Redoing the abandoned highlight would resurrect something the user
+    // deliberately took back, so only the new one is there.
+    assert.strictEqual(harness.currentHighlights().length, 1);
+  });
+
+  it('leaves Ctrl+Z alone inside a text box', async () => {
+    // PDF.js's text boxes are contenteditable, where Ctrl+Z means "undo my
+    // typing" — the browser's own history, which this must not swallow.
+    const harness = await withOneHighlight();
+    harness.pressInTextBox('z');
+    assert.strictEqual(harness.currentHighlights().length, 1);
+  });
+
+  it('sends the undo to PDF.js when its edit was the most recent', async () => {
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'a highlight first');
+    harness.editorEdit();
+
+    harness.press('z');
+    assert.strictEqual(harness.pdfjsUndoCount(), 1, 'PDF.js should undo');
+    assert.strictEqual(
+      harness.currentHighlights().length,
+      1,
+      'the highlight is older, so it must survive'
+    );
+  });
+
+  it('reaches the highlight underneath once PDF.js is exhausted', async () => {
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'a highlight first');
+    harness.editorEdit();
+
+    harness.press('z');
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+  });
+
+  it('undoes the highlight first when it came after the editor edit', async () => {
+    const harness = await run();
+    harness.editorEdit();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'a highlight last');
+
+    harness.press('z');
+    assert.strictEqual(harness.currentHighlights().length, 0);
+    assert.strictEqual(
+      harness.pdfjsUndoCount(),
+      0,
+      'the editor edit is older and must wait its turn'
+    );
+  });
+
+  it('drops surplus PDF.js markers instead of swallowing a keystroke', async () => {
+    // One editor edit can raise several state events, so the coordinator
+    // deliberately over-counts. An undo that finds PDF.js with nothing left
+    // must move on to the next entry rather than doing nothing.
+    const harness = await run();
+    harness.click('pdfTranslateHighlight');
+    harness.selectText(LINE, 'a highlight');
+    harness.editorEdit();
+    harness.editorEdit();
+    harness.editorEdit();
+
+    harness.press('z'); // consumes PDF.js's single real undo
+    harness.press('z'); // must skip the surplus markers and reach the highlight
+    assert.strictEqual(harness.currentHighlights().length, 0);
   });
 });

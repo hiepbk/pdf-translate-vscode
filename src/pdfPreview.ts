@@ -461,6 +461,7 @@ export class PdfPreview extends Disposable {
 <script src="${resolveAsUri('lib', 'annotate.js')}"></script>
 <script src="${resolveAsUri('lib', 'highlight.js')}"></script>
 <script src="${resolveAsUri('lib', 'toolbar.js')}"></script>
+<script src="${resolveAsUri('lib', 'undo.js')}"></script>
 </head>`;
 
     const body = `<body tabindex="1">

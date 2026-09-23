@@ -96,11 +96,17 @@ There is no hand tool: the wheel and the scrollbar scroll, and a reader of
 papers wants the text cursor. It is still in the Tools menu for anyone who
 wants it.
 
-`Ctrl+S` saves. The tab shows the usual dirty dot while there are unsaved
-annotations, `Ctrl+Z` undoes within the editor, and **File → Revert** throws
-away everything since the last save. Annotations are written into the PDF as
-real annotation objects, not into a sidecar file, so they travel with the
-document.
+`Ctrl+S` saves, and **File → Revert** throws away everything since the last
+save. The tab shows the usual dirty dot while there are unsaved annotations.
+Annotations are written into the PDF as real annotation objects, not into a
+sidecar file, so they travel with the document.
+
+`Ctrl+Z` takes back the last edit of any kind, and `Ctrl+Y` or `Ctrl+Shift+Z`
+puts it back. Highlights and PDF.js's editors keep separate histories that
+cannot be merged — PDF.js holds its own behind a private field — so one
+coordinator owns the keystroke and tracks which of the two made each edit, in
+order. Inside a text box `Ctrl+Z` still means "undo my typing", which is the
+browser's own history and the right answer there.
 
 **Highlight** is this fork's own. The bundled PDF.js is 3.1.81 and its highlight
 editor arrived in 4.3, so selecting text with Highlight on draws an overlay, and

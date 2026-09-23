@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added undo and redo for every kind of edit. Highlights had none at all —
+  they could only be clicked away — and PDF.js's own `Ctrl+Z` only fired when
+  focus happened to be inside an editor layer, so an edit could look
+  un-undoable purely because the caret was elsewhere. One coordinator now owns
+  the keystroke and keeps the two histories in chronological order, so
+  `Ctrl+Z` always takes back the most recent edit whichever made it. Inside a
+  text box the keystroke is left alone, where it means "undo my typing".
 - Added a Foxit-style tool group to the toolbar — **Select**, **Highlight**,
   **Typewriter**, **Draw** — with exactly one active at a time.
   PDF.js keeps cursor tools and annotation editor modes in two unrelated
