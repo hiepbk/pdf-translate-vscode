@@ -1,5 +1,20 @@
 # Change Log
 
+## 0.2.1
+
+- Fixed install.sh installing nothing on a remote host. It picked the
+  release asset out of GitHub's API response with line-oriented greps, but
+  GitHub sends the release as compact JSON on a single line — so the whole
+  document arrived as one line and a positional cut returned the release's own
+  API URL. The script downloaded that JSON and handed it to VS Code, which
+  reported "not a zip file". The extraction now matches within the line, so
+  it works whether the JSON is compact or pretty-printed.
+- install.sh no longer claims success when the install failed. It checks the
+  download really is a VSIX before offering it to VS Code, and afterwards asks
+  what is installed rather than trusting the CLI's exit status, which was seen
+  exiting 0 straight after printing "Failed Installing Extensions".
+- install.ps1 was unaffected: PowerShell parses the JSON properly.
+
 ## 0.2.0
 
 - Added an **Erase** tool. Click any annotation already in the file — a
